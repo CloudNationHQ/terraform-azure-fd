@@ -17,6 +17,10 @@ resource "azurerm_cdn_frontdoor_profile" "profile" {
   name                = each.value.name
   resource_group_name = each.value.resource_group
   sku_name            = try(each.value.sku_name, "Standard_AzureFrontDoor")
+
+  tags = try(
+    var.profile.tags, var.tags
+  )
 }
 
 # endpoints
@@ -27,6 +31,10 @@ resource "azurerm_cdn_frontdoor_endpoint" "eps" {
 
   name = try(
     each.value.name, join("-", [var.naming.cdn_frontdoor_endpoint, each.key])
+  )
+
+  tags = try(
+    var.profile.tags, var.tags
   )
 
   cdn_frontdoor_profile_id = lookup(var.profile, "existing", false) != false ? data.azurerm_cdn_frontdoor_profile.profile["profile"].id : azurerm_cdn_frontdoor_profile.profile["profile"].id

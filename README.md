@@ -67,7 +67,6 @@ End-to-end testing is not conducted on these modules, as they are individual com
 
 | Name | Description | Type | Default | Required |
 |------|-------------|------|---------|:--------:|
-| <a name="input_location"></a> [location](#input\_location) | default azure region to be used. | `string` | `null` | no |
 | <a name="input_naming"></a> [naming](#input\_naming) | contains naming convention | `map(string)` | `{}` | no |
 | <a name="input_profile"></a> [profile](#input\_profile) | contains frontdoor configuration | `any` | n/a | yes |
 | <a name="input_resource_group"></a> [resource\_group](#input\_resource\_group) | default resource group to be used. | `string` | `null` | no |
