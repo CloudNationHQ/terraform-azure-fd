@@ -1,4 +1,4 @@
-variable "config" {
+variable "profile" {
   description = "contains frontdoor configuration"
   type        = any
 }

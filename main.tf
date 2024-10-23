@@ -1,23 +1,42 @@
+# existing
+data "azurerm_cdn_frontdoor_profile" "profile" {
+  for_each = lookup(
+    var.profile, "existing", null
+  ) != null ? { "profile" = var.profile.existing } : {}
+
+  name                = each.value.name
+  resource_group_name = coalesce(lookup(each.value, "resource_group", null), var.resource_group)
+}
+
 # profile
 resource "azurerm_cdn_frontdoor_profile" "profile" {
-  name                = var.config.name
-  resource_group_name = coalesce(lookup(var.config, "resource_group", null), var.resource_group)
-  sku_name            = try(var.config.sku_name, "Standard_AzureFrontDoor")
+  for_each = lookup(
+    var.profile, "existing", null
+  ) != null ? {} : { "profile" = var.profile }
+
+  name                = each.value.name
+  resource_group_name = each.value.resource_group
+  sku_name            = try(each.value.sku_name, "Standard_AzureFrontDoor")
 }
 
 # endpoints
 resource "azurerm_cdn_frontdoor_endpoint" "eps" {
-  for_each = var.config.endpoints
+  for_each = lookup(
+    var.profile, "existing", null
+  ) != null ? var.profile.existing.endpoints : var.profile.endpoints
 
-  name                     = try(each.value.name, join("-", [var.naming.cdn_frontdoor_endpoint, each.key]))
-  cdn_frontdoor_profile_id = azurerm_cdn_frontdoor_profile.profile.id
+  name = try(
+    each.value.name, join("-", [var.naming.cdn_frontdoor_endpoint, each.key])
+  )
+
+  cdn_frontdoor_profile_id = lookup(var.profile, "existing", false) != false ? data.azurerm_cdn_frontdoor_profile.profile["profile"].id : azurerm_cdn_frontdoor_profile.profile["profile"].id
 }
 
 # custom domains
 resource "azurerm_cdn_frontdoor_custom_domain" "domains" {
   for_each = {
     for item in flatten([
-      for endpoint_key, endpoint in var.config.endpoints :
+      for endpoint_key, endpoint in(lookup(var.profile, "existing", null) != null ? var.profile.existing.endpoints : var.profile.endpoints) :
       [for app_key, app in lookup(endpoint, "applications", {}) :
         [for og_key, og in lookup(app, "origin_groups", {}) :
           [for route_key, route in lookup(og, "routes", {}) :
@@ -39,7 +58,7 @@ resource "azurerm_cdn_frontdoor_custom_domain" "domains" {
   }
 
   name                     = each.value.domain_name
-  cdn_frontdoor_profile_id = azurerm_cdn_frontdoor_profile.profile.id
+  cdn_frontdoor_profile_id = lookup(var.profile, "existing", false) != false ? data.azurerm_cdn_frontdoor_profile.profile["profile"].id : azurerm_cdn_frontdoor_profile.profile["profile"].id
   host_name                = each.value.domain.host_name
   dns_zone_id              = try(each.value.domain.dns_zone_id, null)
 
@@ -53,7 +72,7 @@ resource "azurerm_cdn_frontdoor_custom_domain" "domains" {
 resource "azurerm_cdn_frontdoor_origin_group" "origin_groups" {
   for_each = {
     for item in flatten([
-      for endpoint_key, endpoint in var.config.endpoints :
+      for endpoint_key, endpoint in(lookup(var.profile, "existing", null) != null ? var.profile.existing.endpoints : var.profile.endpoints) :
       [for app_key, app in lookup(endpoint, "applications", {}) :
         [for og_key, og in lookup(app, "origin_groups", {}) :
           {
@@ -69,7 +88,7 @@ resource "azurerm_cdn_frontdoor_origin_group" "origin_groups" {
   }
 
   name                     = each.value.og_name
-  cdn_frontdoor_profile_id = azurerm_cdn_frontdoor_profile.profile.id
+  cdn_frontdoor_profile_id = lookup(var.profile, "existing", false) != false ? data.azurerm_cdn_frontdoor_profile.profile["profile"].id : azurerm_cdn_frontdoor_profile.profile["profile"].id
 
   load_balancing {
     sample_size                 = try(each.value.og.load_balancing.sample_size, 4)
@@ -87,7 +106,7 @@ resource "azurerm_cdn_frontdoor_origin_group" "origin_groups" {
 resource "azurerm_cdn_frontdoor_origin" "origins" {
   for_each = {
     for item in flatten([
-      for endpoint_key, endpoint in var.config.endpoints :
+      for endpoint_key, endpoint in(lookup(var.profile, "existing", null) != null ? var.profile.existing.endpoints : var.profile.endpoints) :
       [for app_key, app in lookup(endpoint, "applications", {}) :
         [for og_key, og in lookup(app, "origin_groups", {}) :
           [for origin_key, origin in lookup(og, "origins", {}) :
@@ -131,7 +150,7 @@ resource "azurerm_cdn_frontdoor_origin" "origins" {
 resource "azurerm_cdn_frontdoor_route" "routes" {
   for_each = {
     for item in flatten([
-      for endpoint_key, endpoint in var.config.endpoints :
+      for endpoint_key, endpoint in(lookup(var.profile, "existing", null) != null ? var.profile.existing.endpoints : var.profile.endpoints) :
       [for app_key, app in lookup(endpoint, "applications", {}) :
         [for og_key, og in lookup(app, "origin_groups", {}) :
           [for route_key, route in lookup(og, "routes", {}) :
@@ -193,7 +212,7 @@ resource "azurerm_cdn_frontdoor_route" "routes" {
 resource "azurerm_cdn_frontdoor_rule_set" "rule_sets" {
   for_each = {
     for item in flatten([
-      for endpoint_key, endpoint in var.config.endpoints :
+      for endpoint_key, endpoint in(lookup(var.profile, "existing", null) != null ? var.profile.existing.endpoints : var.profile.endpoints) :
       [for app_key, app in lookup(endpoint, "applications", {}) :
         [for og_key, og in lookup(app, "origin_groups", {}) :
           [for route_key, route in lookup(og, "routes", {}) :
@@ -216,14 +235,14 @@ resource "azurerm_cdn_frontdoor_rule_set" "rule_sets" {
   }
 
   name                     = each.value.rs_name
-  cdn_frontdoor_profile_id = azurerm_cdn_frontdoor_profile.profile.id
+  cdn_frontdoor_profile_id = lookup(var.profile, "existing", false) != false ? data.azurerm_cdn_frontdoor_profile.profile["profile"].id : azurerm_cdn_frontdoor_profile.profile["profile"].id
 }
 
 # rules
 resource "azurerm_cdn_frontdoor_rule" "rules" {
   for_each = {
     for item in flatten([
-      for endpoint_key, endpoint in var.config.endpoints :
+      for endpoint_key, endpoint in(lookup(var.profile, "existing", null) != null ? var.profile.existing.endpoints : var.profile.endpoints) :
       [for app_key, app in lookup(endpoint, "applications", {}) :
         [for og_key, og in lookup(app, "origin_groups", {}) :
           [for route_key, route in lookup(og, "routes", {}) :
@@ -505,5 +524,3 @@ resource "azurerm_cdn_frontdoor_rule" "rules" {
     }
   }
 }
-
-# TODO: investigate to implement support for existing profile as well

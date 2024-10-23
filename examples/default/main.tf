@@ -17,72 +17,37 @@ module "rg" {
   }
 }
 
-module "policy" {
-  source  = "cloudnationhq/fdfwp/azure"
-  version = "~> 1.0"
-
-  config = {
-    name           = module.naming.cdn_frontdoor_firewall_policy.name
-    frontdoor_id   = module.frontdoor.profile.id
-    resource_group = module.rg.groups.demo.name
-    sku_name       = "Premium_AzureFrontDoor"
-
-    policy = {
-      mode = "Prevention"
-    }
-
-    managed_rules = {
-      default = {
-        type    = "DefaultRuleSet"
-        version = "1.0"
-      }
-      botprotection = {
-        type    = "Microsoft_BotManagerRuleSet"
-        version = "1.0"
-      }
-    }
-
-    security_policy = {
-      name = module.naming.cdn_frontdoor_security_policy.name
-
-      associations = {
-        main = {
-          patterns_to_match = ["/*"]
-          domains = {
-            website = {
-              domain_id = module.frontdoor.custom_domains.secondary.id
-            }
-            another = {
-              domain_id = module.frontdoor.custom_domains.tertiary.id
-            }
-          }
-        }
-      }
-    }
-  }
-}
-
 module "frontdoor" {
-  #source  = "cloudnationhq/sb/azure"
-  #version = "~> 1.0"
-  source = "../../"
+  source  = "cloudnationhq/fd/azure"
+  version = "~> 1.0"
 
   naming = local.naming
 
-  config = {
-    name           = module.naming.cdn_frontdoor_profile.name_unique
+  profile = {
+    name           = module.naming.cdn_frontdoor_profile.name
     resource_group = module.rg.groups.demo.name
-    sku_name       = "Premium_AzureFrontDoor"
 
     endpoints = {
-      shared = {
+      main = {
         applications = {
-          website = local.website
-          #api     = local.api
+          portal = {
+            origin_groups = {
+              apps = {
+                origins = {
+                  primary = {
+                    host_name          = "example-web-app.azurewebsites.net"
+                    origin_host_header = "example-web-app.azurewebsites.net"
+                  }
+                }
+                routes = {
+                  default = {
+                    patterns_to_match = ["/*"]
+                  }
+                }
+              }
+            }
+          }
         }
-      }
-      digitaltwins = {
-        name = "cfde-digitaltwins"
       }
     }
   }

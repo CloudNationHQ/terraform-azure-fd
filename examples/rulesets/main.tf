@@ -50,10 +50,10 @@ module "policy" {
           patterns_to_match = ["/*"]
           domains = {
             website = {
-              domain_id = module.frontdoor.custom_domains.secondary.id
+              domain_id = module.frontdoor.custom_domains.portal.id
             }
             another = {
-              domain_id = module.frontdoor.custom_domains.tertiary.id
+              domain_id = module.frontdoor.custom_domains.backup.id
             }
           }
         }
@@ -63,21 +63,20 @@ module "policy" {
 }
 
 module "frontdoor" {
-  #source  = "cloudnationhq/sb/azure"
-  #version = "~> 1.0"
-  source = "../../"
+  source  = "cloudnationhq/fd/azure"
+  version = "~> 1.0"
 
   naming = local.naming
 
-  config = {
+  profile = {
     name           = module.naming.cdn_frontdoor_profile.name_unique
     resource_group = module.rg.groups.demo.name
     sku_name       = "Premium_AzureFrontDoor"
 
     endpoints = {
-      shared = {
+      demo = {
         applications = {
-          website = local.website
+          portal = local.portal
         }
       }
     }

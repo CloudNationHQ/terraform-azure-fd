@@ -89,60 +89,22 @@ module "privatelink" {
 }
 
 module "frontdoor" {
-  source = "../../"
+  source  = "cloudnationhq/fd/azure"
+  version = "~> 1.0"
 
   naming = local.naming
 
-  config = {
+  profile = {
     name           = module.naming.cdn_frontdoor_profile.name_unique
     resource_group = module.rg.groups.demo.name
     sku_name       = "Premium_AzureFrontDoor"
 
     endpoints = {
-      shared = {
+      demo = {
         applications = {
-          demo = {
-            origin_groups = {
-              primary = {
-                load_balancing = {
-                  sample_size                 = 4
-                  successful_samples_required = 3
-                }
-                health_probe = {
-                  path     = "/health"
-                  protocol = "Https"
-                }
-                origins = {
-                  storage = {
-                    host_name                      = module.storage.account.primary_web_host
-                    origin_host_header             = module.storage.account.primary_web_host
-                    certificate_name_check_enabled = true
-                    priority                       = 1
-                    weight                         = 500
-                    private_link = {
-                      location               = module.rg.groups.demo.location
-                      private_link_target_id = module.storage.account.id
-                      target_type            = "blob"
-                    }
-                  }
-                }
-                routes = {
-                  default = {
-                    patterns_to_match   = ["/*"]
-                    supported_protocols = ["Http", "Https"]
-                    forwarding_protocol = "HttpsOnly"
-                  }
-                }
-              }
-              // another origin groups without private link
-            }
-          }
+          assets = local.assets
         }
       }
     }
   }
 }
-
-#notes
-# Origin Group can only have origins with private links or origins without private links. They canot have a mix of both."
-# private link request needs to be approved on the storage account

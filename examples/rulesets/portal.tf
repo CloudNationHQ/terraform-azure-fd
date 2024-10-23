@@ -1,7 +1,7 @@
 locals {
-  website = {
+  portal = {
     origin_groups = {
-      primary = {
+      apps = {
         load_balancing = {
           sample_size                 = 4
           successful_samples_required = 3
@@ -11,13 +11,13 @@ locals {
           protocol = "Https"
         }
         origins = {
-          primary = {
+          west = {
             host_name          = "example-web-app.azurewebsites.net"
             origin_host_header = "example-web-app.azurewebsites.net"
             priority           = 1
             weight             = 1000
           }
-          secondary = {
+          north = {
             host_name          = "example-web-app-secondary.azurewebsites.net"
             origin_host_header = "example-web-app-secondary.azurewebsites.net"
             priority           = 2
@@ -25,13 +25,13 @@ locals {
           }
         }
         routes = {
-          default = {
+          main = {
             patterns_to_match   = ["/*"]
             supported_protocols = ["Http", "Https"]
             forwarding_protocol = "HttpsOnly"
             custom_domains = {
-              primary = {
-                host_name = "www.bla.com"
+              portal = {
+                host_name = "www.portal.com"
                 tls = {
                   certificate_type    = "ManagedCertificate"
                   minimum_tls_version = "TLS12"
@@ -46,7 +46,7 @@ locals {
             rule_sets = {
               security = {
                 rules = {
-                  headers = {
+                  hsts = {
                     order             = 1
                     behavior_on_match = "Continue"
                     actions = [{
@@ -66,20 +66,20 @@ locals {
               }
             }
           }
-          secondary = {
+          legacy = {
             patterns_to_match   = ["/secunda/*"]
             supported_protocols = ["Http", "Https"]
             forwarding_protocol = "HttpsOnly"
             custom_domains = {
-              secondary = {
-                host_name = "secunda4.example.com"
+              web = {
+                host_name = "web.example.com"
                 tls = {
                   certificate_type    = "ManagedCertificate"
                   minimum_tls_version = "TLS12"
                 }
               }
-              tertiary = {
-                host_name = "secunda5.example.com"
+              backup = {
+                host_name = "backup.example.com"
                 tls = {
                   certificate_type    = "ManagedCertificate"
                   minimum_tls_version = "TLS12"
@@ -94,7 +94,7 @@ locals {
             rule_sets = {
               redirect = {
                 rules = {
-                  redirect = {
+                  forward = {
                     order             = 1
                     behavior_on_match = "Continue"
                     actions = [{
