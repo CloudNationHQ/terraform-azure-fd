@@ -19,7 +19,7 @@ module "rg" {
 
 module "network" {
   source  = "cloudnationhq/vnet/azure"
-  version = "~> 4.0"
+  version = "~> 7.0"
 
   naming = local.naming
 
@@ -31,8 +31,8 @@ module "network" {
 
     subnets = {
       sn1 = {
-        nsg  = {}
-        cidr = ["10.19.1.0/24"]
+        network_security_group = {}
+        cidr                   = ["10.19.1.0/24"]
       }
     }
   }

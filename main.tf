@@ -4,8 +4,11 @@ data "azurerm_cdn_frontdoor_profile" "profile" {
     var.profile, "existing", null
   ) != null ? { "profile" = var.profile.existing } : {}
 
-  name                = each.value.name
-  resource_group_name = coalesce(lookup(each.value, "resource_group", null), var.resource_group)
+  name = each.value.name
+
+  resource_group_name = coalesce(lookup(
+    each.value, "resource_group", null
+  ), var.resource_group)
 }
 
 # profile
@@ -50,13 +53,15 @@ resource "azurerm_cdn_frontdoor_custom_domain" "domains" {
           [for route_key, route in lookup(og, "routes", {}) :
             [for domain_key, domain in lookup(route, "custom_domains", {}) :
               {
-                key         = "${endpoint_key}-${app_key}-${og_key}-${route_key}-${domain_key}"
-                endpoint    = endpoint_key
-                app         = app_key
-                og          = og_key
-                route       = route_key
-                domain      = domain
-                domain_name = lookup(domain, "name", null) != null ? domain.name : join("-", [var.naming.cdn_frontdoor_custom_domain, domain_key])
+                key      = "${endpoint_key}-${app_key}-${og_key}-${route_key}-${domain_key}"
+                endpoint = endpoint_key
+                app      = app_key
+                og       = og_key
+                route    = route_key
+                domain   = domain
+                domain_name = lookup(
+                  domain, "name", null) != null ? domain.name : join("-", [var.naming.cdn_frontdoor_custom_domain, domain_key]
+                )
               }
             ]
           ]
@@ -88,7 +93,9 @@ resource "azurerm_cdn_frontdoor_origin_group" "origin_groups" {
             endpoint = endpoint_key
             app      = app_key
             og       = og
-            og_name  = lookup(og, "name", null) != null ? og.name : join("-", [var.naming.cdn_frontdoor_origin_group, og_key])
+            og_name = lookup(
+              og, "name", null) != null ? og.name : join("-", [var.naming.cdn_frontdoor_origin_group, og_key]
+            )
           }
         ]
       ]
@@ -125,7 +132,9 @@ resource "azurerm_cdn_frontdoor_origin" "origins" {
               og           = og_key
               origin       = origin
               origin_group = "${endpoint_key}-${app_key}-${og_key}"
-              origin_name  = lookup(origin, "name", null) != null ? origin.name : join("-", [var.naming.cdn_frontdoor_origin, origin_key])
+              origin_name = lookup(
+                origin, "name", null) != null ? origin.name : join("-", [var.naming.cdn_frontdoor_origin, origin_key]
+              )
             }
           ]
         ]
@@ -141,6 +150,8 @@ resource "azurerm_cdn_frontdoor_origin" "origins" {
   weight                         = try(each.value.origin.weight, 1000)
   enabled                        = try(each.value.origin.enabled, true)
   certificate_name_check_enabled = try(each.value.origin.certificate_name_check_enabled, false)
+  https_port                     = try(each.value.origin.https_port, 443)
+  http_port                      = try(each.value.origin.http_port, 80)
 
   dynamic "private_link" {
     for_each = try(each.value.origin.private_link, null) != null ? [each.value.origin.private_link] : []
@@ -171,7 +182,9 @@ resource "azurerm_cdn_frontdoor_route" "routes" {
               route_key      = route_key
               origin_group   = "${endpoint_key}-${app_key}-${og_key}"
               custom_domains = try(route.custom_domains, {})
-              route_name     = lookup(route, "name", null) != null ? route.name : join("-", [var.naming.cdn_frontdoor_route, route_key])
+              route_name = lookup(
+                route, "name", null) != null ? route.name : join("-", [var.naming.cdn_frontdoor_route, route_key]
+              )
             }
           ]
         ]
@@ -233,7 +246,9 @@ resource "azurerm_cdn_frontdoor_rule_set" "rule_sets" {
                 route    = route_key
                 rs_key   = rs_key
                 rs       = rs
-                rs_name  = lookup(rs, "name", null) != null ? rs.name : join("", [var.naming.cdn_frontdoor_rule_set, rs_key])
+                rs_name = lookup(
+                  rs, "name", null) != null ? rs.name : join("", [var.naming.cdn_frontdoor_rule_set, rs_key]
+                )
               }
             ]
           ]
@@ -257,14 +272,16 @@ resource "azurerm_cdn_frontdoor_rule" "rules" {
             [for rs_key, rs in lookup(route, "rule_sets", {}) :
               [for rule_key, rule in lookup(rs, "rules", {}) :
                 {
-                  key       = "${endpoint_key}-${app_key}-${og_key}-${route_key}-${rs_key}-${rule_key}"
-                  endpoint  = endpoint_key
-                  app       = app_key
-                  og        = og_key
-                  route     = route_key
-                  rs        = rs_key
-                  rule      = rule
-                  rule_name = lookup(rule, "name", null) != null ? rule.name : join("", [var.naming.cdn_frontdoor_rule, rule_key])
+                  key      = "${endpoint_key}-${app_key}-${og_key}-${route_key}-${rs_key}-${rule_key}"
+                  endpoint = endpoint_key
+                  app      = app_key
+                  og       = og_key
+                  route    = route_key
+                  rs       = rs_key
+                  rule     = rule
+                  rule_name = lookup(
+                    rule, "name", null) != null ? rule.name : join("", [var.naming.cdn_frontdoor_rule, rule_key]
+                  )
                 }
               ]
             ]
@@ -291,6 +308,7 @@ resource "azurerm_cdn_frontdoor_rule" "rules" {
         destination_path     = try(url_redirect_action.value.destination_path, "")
         query_string         = try(url_redirect_action.value.query_string, "")
         destination_fragment = try(url_redirect_action.value.destination_fragment, "")
+        redirect_protocol    = try(url_redirect_action.value.redirect_protocol, "MatchRequest")
       }
     }
 
@@ -318,6 +336,7 @@ resource "azurerm_cdn_frontdoor_rule" "rules" {
         cache_behavior                = try(route_configuration_override_action.value.cache_behavior, "HonorOrigin")
         query_string_caching_behavior = try(route_configuration_override_action.value.query_string_caching_behavior, "IgnoreQueryString")
         compression_enabled           = try(route_configuration_override_action.value.compression_enabled, true)
+        query_string_parameters       = try(route_configuration_override_action.value.query_string_parameters, [])
       }
     }
 
