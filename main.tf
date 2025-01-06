@@ -76,8 +76,9 @@ resource "azurerm_cdn_frontdoor_custom_domain" "domains" {
   dns_zone_id              = try(each.value.domain.dns_zone_id, null)
 
   tls {
-    certificate_type    = try(each.value.domain.tls.certificate_type, "ManagedCertificate")
-    minimum_tls_version = try(each.value.domain.tls.minimum_tls_version, "TLS12")
+    certificate_type        = try(each.value.domain.tls.certificate_type, "ManagedCertificate")
+    minimum_tls_version     = try(each.value.domain.tls.minimum_tls_version, "TLS12")
+    cdn_frontdoor_secret_id = try(each.value.domain.tls.cdn_frontdoor_secret_id, null)
   }
 }
 
@@ -102,18 +103,22 @@ resource "azurerm_cdn_frontdoor_origin_group" "origin_groups" {
     ]) : item.key => item
   }
 
-  name                     = each.value.og_name
-  cdn_frontdoor_profile_id = lookup(var.profile, "existing", false) != false ? data.azurerm_cdn_frontdoor_profile.profile["profile"].id : azurerm_cdn_frontdoor_profile.profile["profile"].id
+  name                                                      = each.value.og_name
+  cdn_frontdoor_profile_id                                  = lookup(var.profile, "existing", false) != false ? data.azurerm_cdn_frontdoor_profile.profile["profile"].id : azurerm_cdn_frontdoor_profile.profile["profile"].id
+  session_affinity_enabled                                  = try(each.value.og.session_affinity_enabled, false)
+  restore_traffic_time_to_healed_or_new_endpoint_in_minutes = try(each.value.og.restore_traffic_time_to_healed_or_new_endpoint_in_minutes, 10)
 
   load_balancing {
-    sample_size                 = try(each.value.og.load_balancing.sample_size, 4)
-    successful_samples_required = try(each.value.og.load_balancing.successful_samples_required, 3)
+    sample_size                        = try(each.value.og.load_balancing.sample_size, 4)
+    successful_samples_required        = try(each.value.og.load_balancing.successful_samples_required, 3)
+    additional_latency_in_milliseconds = try(each.value.og.load_balancing.additional_latency_in_milliseconds, 50)
   }
 
   health_probe {
     path                = try(each.value.og.health_probe.path, "/")
     protocol            = try(each.value.og.health_probe.protocol, "Http")
     interval_in_seconds = try(each.value.og.health_probe.interval_in_seconds, 100)
+    request_type        = try(each.value.og.health_probe.request_type, "HEAD")
   }
 }
 
@@ -195,6 +200,8 @@ resource "azurerm_cdn_frontdoor_route" "routes" {
   name                          = each.value.route_name
   cdn_frontdoor_endpoint_id     = azurerm_cdn_frontdoor_endpoint.eps[each.value.endpoint].id
   cdn_frontdoor_origin_group_id = azurerm_cdn_frontdoor_origin_group.origin_groups[each.value.origin_group].id
+  enabled                       = try(each.value.route.enabled, true)
+  cdn_frontdoor_origin_path     = try(each.value.route.origin_path, null)
 
   cdn_frontdoor_origin_ids = [
     for origin in azurerm_cdn_frontdoor_origin.origins : origin.id
@@ -220,6 +227,7 @@ resource "azurerm_cdn_frontdoor_route" "routes" {
 
   dynamic "cache" {
     for_each = try(each.value.route.cache, null) != null ? [each.value.route.cache] : []
+
     content {
       query_string_caching_behavior = try(cache.value.query_string_caching_behavior, "IgnoreQueryString")
       query_strings                 = try(cache.value.query_strings, [])
