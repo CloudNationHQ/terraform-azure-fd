@@ -1,5 +1,14 @@
 # Changelog
 
+## [1.3.0](https://github.com/CloudNationHQ/terraform-azure-fd/compare/v1.2.0...v1.3.0) (2025-01-06)
+
+
+### Features
+
+* add several missing properties in custom domains, origin groups and routes ([#12](https://github.com/CloudNationHQ/terraform-azure-fd/issues/12)) ([951521c](https://github.com/CloudNationHQ/terraform-azure-fd/commit/951521cf00173f7d91b1a9fb078a73e9b78c6ae4))
+* **deps:** bump github.com/gruntwork-io/terratest in /tests ([#11](https://github.com/CloudNationHQ/terraform-azure-fd/issues/11)) ([09345e7](https://github.com/CloudNationHQ/terraform-azure-fd/commit/09345e78bcbd0d6fbeee36a4ceacb6b8aeb0ad6f))
+* **deps:** bump golang.org/x/crypto from 0.21.0 to 0.31.0 in /tests ([#9](https://github.com/CloudNationHQ/terraform-azure-fd/issues/9)) ([90b9856](https://github.com/CloudNationHQ/terraform-azure-fd/commit/90b9856ec64ccc594fbe45b0e3634f6a12d0253e))
+
 ## [1.2.0](https://github.com/CloudNationHQ/terraform-azure-fd/compare/v1.1.0...v1.2.0) (2024-12-11)
 
 
