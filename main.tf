@@ -17,9 +17,10 @@ resource "azurerm_cdn_frontdoor_profile" "profile" {
     var.profile, "existing", null
   ) != null ? {} : { "profile" = var.profile }
 
-  name                = each.value.name
-  resource_group_name = each.value.resource_group
-  sku_name            = try(each.value.sku_name, "Standard_AzureFrontDoor")
+  name                     = each.value.name
+  resource_group_name      = each.value.resource_group
+  sku_name                 = try(each.value.sku_name, "Standard_AzureFrontDoor")
+  response_timeout_seconds = try(each.value.response_timeout_seconds, 120)
 
   tags = try(
     var.profile.tags, var.tags
@@ -41,6 +42,7 @@ resource "azurerm_cdn_frontdoor_endpoint" "eps" {
   )
 
   cdn_frontdoor_profile_id = lookup(var.profile, "existing", false) != false ? data.azurerm_cdn_frontdoor_profile.profile["profile"].id : azurerm_cdn_frontdoor_profile.profile["profile"].id
+  enabled                  = try(each.value.enabled, true)
 }
 
 # custom domains
@@ -386,6 +388,67 @@ resource "azurerm_cdn_frontdoor_rule" "rules" {
           operator         = remote_address_condition.value.operator
           negate_condition = try(remote_address_condition.value.negate_condition, false)
           match_values     = remote_address_condition.value.match_values
+        }
+      }
+
+      dynamic "client_port_condition" {
+        for_each = try(
+          [conditions.value.client_port_condition], []
+        )
+
+        content {
+          operator         = client_port_condition.value.operator
+          match_values     = try(client_port_condition.value.match_values, [])
+          negate_condition = try(client_port_condition.value.negate_condition, false)
+        }
+      }
+
+      dynamic "ssl_protocol_condition" {
+        for_each = try(
+          [conditions.value.ssl_protocol_condition], []
+        )
+
+        content {
+          negate_condition = try(ssl_protocol_condition.value.negate_condition, false)
+          match_values     = try(ssl_protocol_condition.value.match_values, [])
+          operator         = try(ssl_protocol_condition.value.operator, "Equal")
+        }
+      }
+
+      dynamic "socket_address_condition" {
+        for_each = try(
+          [conditions.value.socket_address_condition], []
+        )
+
+        content {
+          match_values     = try(socket_address_condition.value.match_values, [])
+          operator         = try(socket_address_condition.value.operator, "IPMatch")
+          negate_condition = try(socket_address_condition.value.negate_condition, false)
+        }
+      }
+
+      dynamic "server_port_condition" {
+        for_each = try(
+          [conditions.value.server_port_condition], []
+        )
+
+        content {
+          negate_condition = try(server_port_condition.value.negate_condition, false)
+          operator         = server_port_condition.value.operator
+          match_values     = server_port_condition.value.match_values
+        }
+      }
+
+      dynamic "host_name_condition" {
+        for_each = try(
+          [conditions.value.host_name_condition], []
+        )
+
+        content {
+          match_values     = try(host_name_condition.value.match_values, [])
+          operator         = host_name_condition.value.operator
+          transforms       = try(host_name_condition.value.transforms, [])
+          negate_condition = try(host_name_condition.value.negate_condition, false)
         }
       }
 
