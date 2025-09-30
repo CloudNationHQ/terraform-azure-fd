@@ -14,7 +14,7 @@
 ### Upgrade from v1.4.0 to v2.0.0:
 
 - Update module reference to: `version = "~> 2.0"`
-- The property and variable resource_group is renamed to resource_group_name
+- The property and variable resource_group is renamed to resource_group_name 
 
 ## [1.4.0](https://github.com/CloudNationHQ/terraform-azure-fd/compare/v1.3.0...v1.4.0) (2025-01-15)
 
