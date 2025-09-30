@@ -9,6 +9,7 @@ data "azurerm_cdn_frontdoor_profile" "profile" {
   )
 }
 
+
 # profile
 resource "azurerm_cdn_frontdoor_profile" "profile" {
   for_each = var.profile.existing != null ? {} : { "profile" = var.profile }
