@@ -1,6 +1,6 @@
 module "naming" {
   source  = "cloudnationhq/naming/azure"
-  version = "~> 0.22"
+  version = "~> 0.24"
 
   suffix = ["demo", "dev"]
 }
@@ -24,8 +24,8 @@ module "frontdoor" {
   naming = local.naming
 
   profile = {
-    name           = module.naming.cdn_frontdoor_profile.name
-    resource_group = module.rg.groups.demo.name
+    name                = module.naming.cdn_frontdoor_profile.name
+    resource_group_name = module.rg.groups.demo.name
 
     endpoints = {
       demo = {

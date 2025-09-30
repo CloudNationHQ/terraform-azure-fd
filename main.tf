@@ -1,69 +1,73 @@
 # existing
 data "azurerm_cdn_frontdoor_profile" "profile" {
-  for_each = lookup(
-    var.profile, "existing", null
-  ) != null ? { "profile" = var.profile.existing } : {}
+  for_each = var.profile.existing != null ? { "profile" = var.profile.existing } : {}
 
-  name = each.value.name
+  name = each.value
 
-  resource_group_name = coalesce(lookup(
-    each.value, "resource_group", null
-  ), var.resource_group)
+  resource_group_name = coalesce(
+    var.profile.resource_group_name, var.resource_group_name
+  )
 }
 
 # profile
 resource "azurerm_cdn_frontdoor_profile" "profile" {
-  for_each = lookup(
-    var.profile, "existing", null
-  ) != null ? {} : { "profile" = var.profile }
+  for_each = var.profile.existing != null ? {} : { "profile" = var.profile }
 
   name                     = each.value.name
-  resource_group_name      = each.value.resource_group
-  sku_name                 = try(each.value.sku_name, "Standard_AzureFrontDoor")
-  response_timeout_seconds = try(each.value.response_timeout_seconds, 120)
+  resource_group_name      = coalesce(each.value.resource_group_name, var.resource_group_name)
+  sku_name                 = each.value.sku_name
+  response_timeout_seconds = each.value.response_timeout_seconds
 
-  tags = try(
-    var.profile.tags, var.tags
-  )
+  tags = merge(var.tags, each.value.tags)
+
+  dynamic "identity" {
+    for_each = each.value.identity != null ? [each.value.identity] : []
+
+    content {
+      type         = identity.value.type
+      identity_ids = identity.value.identity_ids
+    }
+  }
+
+  dynamic "log_scrubbing_rule" {
+    for_each = each.value.log_scrubbing_rules
+
+    content {
+      match_variable = log_scrubbing_rule.value.match_variable
+    }
+  }
 }
 
 # endpoints
 resource "azurerm_cdn_frontdoor_endpoint" "eps" {
-  for_each = lookup(
-    var.profile, "existing", null
-  ) != null ? var.profile.existing.endpoints : var.profile.endpoints
+  for_each = coalesce(var.profile.endpoints, {})
 
-  name = try(
+  name = coalesce(
     each.value.name, join("-", [var.naming.cdn_frontdoor_endpoint, each.key])
   )
 
-  tags = try(
-    var.profile.tags, var.tags
-  )
+  tags = merge(var.tags, coalesce(each.value.tags, {}))
 
-  cdn_frontdoor_profile_id = lookup(var.profile, "existing", false) != false ? data.azurerm_cdn_frontdoor_profile.profile["profile"].id : azurerm_cdn_frontdoor_profile.profile["profile"].id
-  enabled                  = try(each.value.enabled, true)
+  cdn_frontdoor_profile_id = var.profile.existing != null ? data.azurerm_cdn_frontdoor_profile.profile["profile"].id : azurerm_cdn_frontdoor_profile.profile["profile"].id
+  enabled                  = each.value.enabled
 }
 
 # custom domains
 resource "azurerm_cdn_frontdoor_custom_domain" "domains" {
   for_each = {
     for item in flatten([
-      for endpoint_key, endpoint in(lookup(var.profile, "existing", null) != null ? var.profile.existing.endpoints : var.profile.endpoints) :
-      [for app_key, app in lookup(endpoint, "applications", {}) :
-        [for og_key, og in lookup(app, "origin_groups", {}) :
-          [for route_key, route in lookup(og, "routes", {}) :
-            [for domain_key, domain in lookup(route, "custom_domains", {}) :
-              {
-                key      = "${endpoint_key}-${app_key}-${og_key}-${route_key}-${domain_key}"
-                endpoint = endpoint_key
-                app      = app_key
-                og       = og_key
-                route    = route_key
-                domain   = domain
-                domain_name = lookup(
-                  domain, "name", null) != null ? domain.name : join("-", [var.naming.cdn_frontdoor_custom_domain, domain_key]
-                )
+      for ep_key, ep in coalesce(var.profile.endpoints, {}) : [
+        for app_key, app in coalesce(ep.applications, {}) : [
+          for og_key, og in coalesce(app.origin_groups, {}) : [
+            for route_key, route in coalesce(og.routes, {}) : [
+              for cd_key, cd in coalesce(route.custom_domains, {}) : {
+                key           = "${ep_key}-${app_key}-${og_key}-${route_key}-${cd_key}"
+                endpoint      = ep_key
+                app           = app_key
+                og            = og_key
+                route         = route_key
+                custom_domain = cd
+                cd_key        = cd_key
               }
             ]
           ]
@@ -72,55 +76,69 @@ resource "azurerm_cdn_frontdoor_custom_domain" "domains" {
     ]) : item.key => item
   }
 
-  name                     = each.value.domain_name
-  cdn_frontdoor_profile_id = lookup(var.profile, "existing", false) != false ? data.azurerm_cdn_frontdoor_profile.profile["profile"].id : azurerm_cdn_frontdoor_profile.profile["profile"].id
-  host_name                = each.value.domain.host_name
-  dns_zone_id              = try(each.value.domain.dns_zone_id, null)
+  name = coalesce(
+    each.value.custom_domain.name, join("-", [var.naming.cdn_frontdoor_custom_domain, each.value.cd_key])
+  )
 
-  tls {
-    certificate_type        = try(each.value.domain.tls.certificate_type, "ManagedCertificate")
-    minimum_tls_version     = try(each.value.domain.tls.minimum_tls_version, "TLS12")
-    cdn_frontdoor_secret_id = try(each.value.domain.tls.cdn_frontdoor_secret_id, null)
+  cdn_frontdoor_profile_id = var.profile.existing != null ? data.azurerm_cdn_frontdoor_profile.profile["profile"].id : azurerm_cdn_frontdoor_profile.profile["profile"].id
+  dns_zone_id              = each.value.custom_domain.dns_zone_id
+  host_name                = each.value.custom_domain.host_name
+
+  dynamic "tls" {
+    for_each = each.value.custom_domain.tls != null ? [each.value.custom_domain.tls] : []
+
+    content {
+      certificate_type        = tls.value.certificate_type
+      cdn_frontdoor_secret_id = tls.value.cdn_frontdoor_secret_id
+    }
   }
 }
 
 # origin groups
-resource "azurerm_cdn_frontdoor_origin_group" "origin_groups" {
+resource "azurerm_cdn_frontdoor_origin_group" "ogs" {
   for_each = {
     for item in flatten([
-      for endpoint_key, endpoint in(lookup(var.profile, "existing", null) != null ? var.profile.existing.endpoints : var.profile.endpoints) :
-      [for app_key, app in lookup(endpoint, "applications", {}) :
-        [for og_key, og in lookup(app, "origin_groups", {}) :
-          {
-            key      = "${endpoint_key}-${app_key}-${og_key}"
-            endpoint = endpoint_key
+      for ep_key, ep in coalesce(var.profile.endpoints, {}) : [
+        for app_key, app in coalesce(ep.applications, {}) : [
+          for og_key, og in coalesce(app.origin_groups, {}) : {
+            key      = "${ep_key}-${app_key}-${og_key}"
+            endpoint = ep_key
             app      = app_key
             og       = og
-            og_name = lookup(
-              og, "name", null) != null ? og.name : join("-", [var.naming.cdn_frontdoor_origin_group, og_key]
-            )
+            og_key   = og_key
           }
         ]
       ]
     ]) : item.key => item
   }
 
-  name                                                      = each.value.og_name
-  cdn_frontdoor_profile_id                                  = lookup(var.profile, "existing", false) != false ? data.azurerm_cdn_frontdoor_profile.profile["profile"].id : azurerm_cdn_frontdoor_profile.profile["profile"].id
-  session_affinity_enabled                                  = try(each.value.og.session_affinity_enabled, false)
-  restore_traffic_time_to_healed_or_new_endpoint_in_minutes = try(each.value.og.restore_traffic_time_to_healed_or_new_endpoint_in_minutes, 10)
+  name = coalesce(
+    each.value.og.name, join("-", [var.naming.cdn_frontdoor_origin_group, each.value.og_key])
+  )
 
-  load_balancing {
-    sample_size                        = try(each.value.og.load_balancing.sample_size, 4)
-    successful_samples_required        = try(each.value.og.load_balancing.successful_samples_required, 3)
-    additional_latency_in_milliseconds = try(each.value.og.load_balancing.additional_latency_in_milliseconds, 50)
+  cdn_frontdoor_profile_id                                  = var.profile.existing != null ? data.azurerm_cdn_frontdoor_profile.profile["profile"].id : azurerm_cdn_frontdoor_profile.profile["profile"].id
+  session_affinity_enabled                                  = each.value.og.session_affinity_enabled
+  restore_traffic_time_to_healed_or_new_endpoint_in_minutes = each.value.og.restore_traffic_time_to_healed_or_new_endpoint_in_minutes
+
+  dynamic "health_probe" {
+    for_each = each.value.og.health_probe != null ? [each.value.og.health_probe] : []
+
+    content {
+      interval_in_seconds = health_probe.value.interval_in_seconds
+      path                = health_probe.value.path
+      protocol            = health_probe.value.protocol
+      request_type        = health_probe.value.request_type
+    }
   }
 
-  health_probe {
-    path                = try(each.value.og.health_probe.path, "/")
-    protocol            = try(each.value.og.health_probe.protocol, "Http")
-    interval_in_seconds = try(each.value.og.health_probe.interval_in_seconds, 100)
-    request_type        = try(each.value.og.health_probe.request_type, "HEAD")
+  dynamic "load_balancing" {
+    for_each = each.value.og.load_balancing != null ? [each.value.og.load_balancing] : []
+
+    content {
+      additional_latency_in_milliseconds = load_balancing.value.additional_latency_in_milliseconds
+      sample_size                        = load_balancing.value.sample_size
+      successful_samples_required        = load_balancing.value.successful_samples_required
+    }
   }
 }
 
@@ -128,20 +146,16 @@ resource "azurerm_cdn_frontdoor_origin_group" "origin_groups" {
 resource "azurerm_cdn_frontdoor_origin" "origins" {
   for_each = {
     for item in flatten([
-      for endpoint_key, endpoint in(lookup(var.profile, "existing", null) != null ? var.profile.existing.endpoints : var.profile.endpoints) :
-      [for app_key, app in lookup(endpoint, "applications", {}) :
-        [for og_key, og in lookup(app, "origin_groups", {}) :
-          [for origin_key, origin in lookup(og, "origins", {}) :
-            {
-              key          = "${endpoint_key}-${app_key}-${og_key}-${origin_key}"
-              endpoint     = endpoint_key
-              app          = app_key
-              og           = og_key
-              origin       = origin
-              origin_group = "${endpoint_key}-${app_key}-${og_key}"
-              origin_name = lookup(
-                origin, "name", null) != null ? origin.name : join("-", [var.naming.cdn_frontdoor_origin, origin_key]
-              )
+      for ep_key, ep in coalesce(var.profile.endpoints, {}) : [
+        for app_key, app in coalesce(ep.applications, {}) : [
+          for og_key, og in coalesce(app.origin_groups, {}) : [
+            for origin_key, origin in coalesce(og.origins, {}) : {
+              key        = "${ep_key}-${app_key}-${og_key}-${origin_key}"
+              endpoint   = ep_key
+              app        = app_key
+              og         = og_key
+              origin     = origin
+              origin_key = origin_key
             }
           ]
         ]
@@ -149,25 +163,28 @@ resource "azurerm_cdn_frontdoor_origin" "origins" {
     ]) : item.key => item
   }
 
-  name                           = each.value.origin_name
-  cdn_frontdoor_origin_group_id  = azurerm_cdn_frontdoor_origin_group.origin_groups[each.value.origin_group].id
+  name = coalesce(
+    each.value.origin.name, join("-", [var.naming.cdn_frontdoor_origin, each.value.origin_key])
+  )
+
+  cdn_frontdoor_origin_group_id  = azurerm_cdn_frontdoor_origin_group.ogs["${each.value.endpoint}-${each.value.app}-${each.value.og}"].id
+  enabled                        = each.value.origin.enabled
+  certificate_name_check_enabled = each.value.origin.certificate_name_check_enabled
   host_name                      = each.value.origin.host_name
-  origin_host_header             = try(each.value.origin.origin_host_header, each.value.origin.host_name)
-  priority                       = try(each.value.origin.priority, 1)
-  weight                         = try(each.value.origin.weight, 1000)
-  enabled                        = try(each.value.origin.enabled, true)
-  certificate_name_check_enabled = try(each.value.origin.certificate_name_check_enabled, false)
-  https_port                     = try(each.value.origin.https_port, 443)
-  http_port                      = try(each.value.origin.http_port, 80)
+  http_port                      = each.value.origin.http_port
+  https_port                     = each.value.origin.https_port
+  origin_host_header             = each.value.origin.origin_host_header
+  priority                       = each.value.origin.priority
+  weight                         = each.value.origin.weight
 
   dynamic "private_link" {
-    for_each = try(each.value.origin.private_link, null) != null ? [each.value.origin.private_link] : []
+    for_each = each.value.origin.private_link != null ? [each.value.origin.private_link] : []
 
     content {
+      request_message        = private_link.value.request_message
+      target_type            = private_link.value.target_type
       location               = private_link.value.location
       private_link_target_id = private_link.value.private_link_target_id
-      target_type            = try(private_link.value.target_type, null)
-      request_message        = try(private_link.value.request_message, null)
     }
   }
 }
@@ -176,22 +193,16 @@ resource "azurerm_cdn_frontdoor_origin" "origins" {
 resource "azurerm_cdn_frontdoor_route" "routes" {
   for_each = {
     for item in flatten([
-      for endpoint_key, endpoint in(lookup(var.profile, "existing", null) != null ? var.profile.existing.endpoints : var.profile.endpoints) :
-      [for app_key, app in lookup(endpoint, "applications", {}) :
-        [for og_key, og in lookup(app, "origin_groups", {}) :
-          [for route_key, route in lookup(og, "routes", {}) :
-            {
-              key            = "${endpoint_key}-${app_key}-${og_key}-${route_key}"
-              endpoint       = endpoint_key
-              app            = app_key
-              og             = og_key
-              route          = route
-              route_key      = route_key
-              origin_group   = "${endpoint_key}-${app_key}-${og_key}"
-              custom_domains = try(route.custom_domains, {})
-              route_name = lookup(
-                route, "name", null) != null ? route.name : join("-", [var.naming.cdn_frontdoor_route, route_key]
-              )
+      for ep_key, ep in coalesce(var.profile.endpoints, {}) : [
+        for app_key, app in coalesce(ep.applications, {}) : [
+          for og_key, og in coalesce(app.origin_groups, {}) : [
+            for route_key, route in coalesce(og.routes, {}) : {
+              key       = "${ep_key}-${app_key}-${og_key}-${route_key}"
+              endpoint  = ep_key
+              app       = app_key
+              og        = og_key
+              route     = route
+              route_key = route_key
             }
           ]
         ]
@@ -199,42 +210,41 @@ resource "azurerm_cdn_frontdoor_route" "routes" {
     ]) : item.key => item
   }
 
-  name                          = each.value.route_name
+  name = coalesce(
+    each.value.route.name, join(
+      "-", [var.naming.cdn_frontdoor_route, each.value.route_key]
+    )
+  )
+
   cdn_frontdoor_endpoint_id     = azurerm_cdn_frontdoor_endpoint.eps[each.value.endpoint].id
-  cdn_frontdoor_origin_group_id = azurerm_cdn_frontdoor_origin_group.origin_groups[each.value.origin_group].id
-  enabled                       = try(each.value.route.enabled, true)
-  cdn_frontdoor_origin_path     = try(each.value.route.origin_path, null)
+  cdn_frontdoor_origin_group_id = azurerm_cdn_frontdoor_origin_group.ogs["${each.value.endpoint}-${each.value.app}-${each.value.og}"].id
 
-  cdn_frontdoor_origin_ids = [
-    for origin in azurerm_cdn_frontdoor_origin.origins : origin.id
-    if startswith(origin.name, each.value.origin_group) && origin.enabled
-  ]
+  enabled                   = each.value.route.enabled
+  forwarding_protocol       = each.value.route.forwarding_protocol
+  https_redirect_enabled    = each.value.route.https_redirect_enabled
+  patterns_to_match         = each.value.route.patterns_to_match
+  supported_protocols       = each.value.route.supported_protocols
+  link_to_default_domain    = each.value.route.link_to_default_domain
+  cdn_frontdoor_origin_path = each.value.route.cdn_frontdoor_origin_path
 
-  cdn_frontdoor_custom_domain_ids = [
-    for domain_key, domain in each.value.custom_domains :
-    azurerm_cdn_frontdoor_custom_domain.domains["${each.value.endpoint}-${each.value.app}-${each.value.og}-${each.value.route_key}-${domain_key}"].id
-  ]
+  cdn_frontdoor_origin_ids = [for origin_key in keys(coalesce(
+    var.profile.endpoints[each.value.endpoint].applications[each.value.app].origin_groups[each.value.og].origins, {}
+  )) : azurerm_cdn_frontdoor_origin.origins["${each.value.endpoint}-${each.value.app}-${each.value.og}-${origin_key}"].id]
 
-  cdn_frontdoor_rule_set_ids = [
-    for rs_key, rs in try(
-      each.value.route.rule_sets, {}
-    ) : azurerm_cdn_frontdoor_rule_set.rule_sets["${each.value.endpoint}-${each.value.app}-${each.value.og}-${each.value.route_key}-${rs_key}"].id
-  ]
+  cdn_frontdoor_custom_domain_ids = [for cd_key in keys(coalesce(
+    each.value.route.custom_domains, {}
+  )) : azurerm_cdn_frontdoor_custom_domain.domains["${each.value.endpoint}-${each.value.app}-${each.value.og}-${each.value.route_key}-${cd_key}"].id]
 
-  supported_protocols    = try(each.value.route.supported_protocols, ["Http", "Https"])
-  patterns_to_match      = try(each.value.route.patterns_to_match, ["/*"])
-  forwarding_protocol    = try(each.value.route.forwarding_protocol, "HttpsOnly")
-  link_to_default_domain = try(each.value.route.link_to_default_domain, true)
-  https_redirect_enabled = try(each.value.route.https_redirect_enabled, false)
+  cdn_frontdoor_rule_set_ids = [for rs_key in keys(coalesce(each.value.route.rule_sets, {})) : azurerm_cdn_frontdoor_rule_set.rule_sets["${each.value.endpoint}-${each.value.app}-${each.value.og}-${each.value.route_key}-${rs_key}"].id]
 
   dynamic "cache" {
-    for_each = try(each.value.route.cache, null) != null ? [each.value.route.cache] : []
+    for_each = each.value.route.cache != null ? [each.value.route.cache] : []
 
     content {
-      query_string_caching_behavior = try(cache.value.query_string_caching_behavior, "IgnoreQueryString")
-      query_strings                 = try(cache.value.query_strings, [])
-      compression_enabled           = try(cache.value.compression_enabled, true)
-      content_types_to_compress     = try(cache.value.content_types_to_compress, [])
+      query_string_caching_behavior = cache.value.query_string_caching_behavior
+      query_strings                 = cache.value.query_strings
+      compression_enabled           = cache.value.compression_enabled
+      content_types_to_compress     = cache.value.content_types_to_compress
     }
   }
 }
@@ -243,22 +253,18 @@ resource "azurerm_cdn_frontdoor_route" "routes" {
 resource "azurerm_cdn_frontdoor_rule_set" "rule_sets" {
   for_each = {
     for item in flatten([
-      for endpoint_key, endpoint in(lookup(var.profile, "existing", null) != null ? var.profile.existing.endpoints : var.profile.endpoints) :
-      [for app_key, app in lookup(endpoint, "applications", {}) :
-        [for og_key, og in lookup(app, "origin_groups", {}) :
-          [for route_key, route in lookup(og, "routes", {}) :
-            [for rs_key, rs in lookup(route, "rule_sets", {}) :
-              {
-                key      = "${endpoint_key}-${app_key}-${og_key}-${route_key}-${rs_key}"
-                endpoint = endpoint_key
+      for ep_key, ep in coalesce(var.profile.endpoints, {}) : [
+        for app_key, app in coalesce(ep.applications, {}) : [
+          for og_key, og in coalesce(app.origin_groups, {}) : [
+            for route_key, route in coalesce(og.routes, {}) : [
+              for rs_key, rs in coalesce(route.rule_sets, {}) : {
+                key      = "${ep_key}-${app_key}-${og_key}-${route_key}-${rs_key}"
+                endpoint = ep_key
                 app      = app_key
                 og       = og_key
                 route    = route_key
-                rs_key   = rs_key
                 rs       = rs
-                rs_name = lookup(
-                  rs, "name", null) != null ? rs.name : join("", [var.naming.cdn_frontdoor_rule_set, rs_key]
-                )
+                rs_key   = rs_key
               }
             ]
           ]
@@ -267,30 +273,32 @@ resource "azurerm_cdn_frontdoor_rule_set" "rule_sets" {
     ]) : item.key => item
   }
 
-  name                     = each.value.rs_name
-  cdn_frontdoor_profile_id = lookup(var.profile, "existing", false) != false ? data.azurerm_cdn_frontdoor_profile.profile["profile"].id : azurerm_cdn_frontdoor_profile.profile["profile"].id
+  name = coalesce(
+    each.value.rs.name, join("", [var.naming.cdn_frontdoor_rule_set, each.value.rs_key])
+  )
+
+  cdn_frontdoor_profile_id = var.profile.existing != null ? data.azurerm_cdn_frontdoor_profile.profile["profile"].id : azurerm_cdn_frontdoor_profile.profile["profile"].id
 }
 
 # rules
 resource "azurerm_cdn_frontdoor_rule" "rules" {
   for_each = {
     for item in flatten([
-      for endpoint_key, endpoint in(lookup(var.profile, "existing", null) != null ? var.profile.existing.endpoints : var.profile.endpoints) :
-      [for app_key, app in lookup(endpoint, "applications", {}) :
-        [for og_key, og in lookup(app, "origin_groups", {}) :
-          [for route_key, route in lookup(og, "routes", {}) :
-            [for rs_key, rs in lookup(route, "rule_sets", {}) :
-              [for rule_key, rule in lookup(rs, "rules", {}) :
-                {
-                  key      = "${endpoint_key}-${app_key}-${og_key}-${route_key}-${rs_key}-${rule_key}"
-                  endpoint = endpoint_key
+      for ep_key, ep in coalesce(var.profile.endpoints, {}) : [
+        for app_key, app in coalesce(ep.applications, {}) : [
+          for og_key, og in coalesce(app.origin_groups, {}) : [
+            for route_key, route in coalesce(og.routes, {}) : [
+              for rs_key, rs in coalesce(route.rule_sets, {}) : [
+                for rule_key, rule in coalesce(rs.rules, {}) : {
+                  key      = "${ep_key}-${app_key}-${og_key}-${route_key}-${rs_key}-${rule_key}"
+                  endpoint = ep_key
                   app      = app_key
                   og       = og_key
                   route    = route_key
                   rs       = rs_key
                   rule     = rule
-                  rule_name = lookup(
-                    rule, "name", null) != null ? rule.name : join("", [var.naming.cdn_frontdoor_rule, rule_key]
+                  rule_name = coalesce(
+                    rule.name, join("", [var.naming.cdn_frontdoor_rule, rule_key])
                   )
                 }
               ]
@@ -304,56 +312,48 @@ resource "azurerm_cdn_frontdoor_rule" "rules" {
   name                      = each.value.rule_name
   cdn_frontdoor_rule_set_id = azurerm_cdn_frontdoor_rule_set.rule_sets["${each.value.endpoint}-${each.value.app}-${each.value.og}-${each.value.route}-${each.value.rs}"].id
   order                     = each.value.rule.order
-  behavior_on_match         = try(each.value.rule.behavior_on_match, "Continue")
+  behavior_on_match         = each.value.rule.behavior_on_match
 
   actions {
     dynamic "url_redirect_action" {
-      for_each = try(
-        [each.value.rule.actions[0].url_redirect_action], []
-      )
+      for_each = each.value.rule.actions[0].url_redirect_action != null ? [each.value.rule.actions[0].url_redirect_action] : []
 
       content {
         redirect_type        = url_redirect_action.value.redirect_type
         destination_hostname = url_redirect_action.value.destination_hostname
-        destination_path     = try(url_redirect_action.value.destination_path, "")
-        query_string         = try(url_redirect_action.value.query_string, "")
-        destination_fragment = try(url_redirect_action.value.destination_fragment, "")
-        redirect_protocol    = try(url_redirect_action.value.redirect_protocol, "MatchRequest")
+        destination_path     = url_redirect_action.value.destination_path
+        query_string         = url_redirect_action.value.query_string
+        destination_fragment = url_redirect_action.value.destination_fragment
+        redirect_protocol    = url_redirect_action.value.redirect_protocol
       }
     }
 
     dynamic "url_rewrite_action" {
-      for_each = try(
-        [each.value.rule.actions[0].url_rewrite_action], []
-      )
+      for_each = each.value.rule.actions[0].url_rewrite_action != null ? [each.value.rule.actions[0].url_rewrite_action] : []
 
       content {
         source_pattern          = url_rewrite_action.value.source_pattern
         destination             = url_rewrite_action.value.destination
-        preserve_unmatched_path = try(url_rewrite_action.value.preserve_unmatched_path, true)
+        preserve_unmatched_path = url_rewrite_action.value.preserve_unmatched_path
       }
     }
 
     dynamic "route_configuration_override_action" {
-      for_each = try(
-        [each.value.rule.actions[0].route_configuration_override_action], []
-      )
+      for_each = each.value.rule.actions[0].route_configuration_override_action != null ? [each.value.rule.actions[0].route_configuration_override_action] : []
 
       content {
-        cdn_frontdoor_origin_group_id = try(azurerm_cdn_frontdoor_origin_group.origin_groups["${each.value.endpoint}-${each.value.app}-${each.value.og}"].id, null)
-        forwarding_protocol           = try(route_configuration_override_action.value.forwarding_protocol, "MatchRequest")
-        cache_duration                = try(route_configuration_override_action.value.cache_duration, "P1D")
-        cache_behavior                = try(route_configuration_override_action.value.cache_behavior, "HonorOrigin")
-        query_string_caching_behavior = try(route_configuration_override_action.value.query_string_caching_behavior, "IgnoreQueryString")
-        compression_enabled           = try(route_configuration_override_action.value.compression_enabled, true)
-        query_string_parameters       = try(route_configuration_override_action.value.query_string_parameters, [])
+        forwarding_protocol           = route_configuration_override_action.value.forwarding_protocol
+        cache_duration                = route_configuration_override_action.value.cache_duration
+        cache_behavior                = route_configuration_override_action.value.cache_behavior
+        query_string_caching_behavior = route_configuration_override_action.value.query_string_caching_behavior
+        compression_enabled           = route_configuration_override_action.value.compression_enabled
+        query_string_parameters       = route_configuration_override_action.value.query_string_parameters
+        cdn_frontdoor_origin_group_id = route_configuration_override_action.value.cdn_frontdoor_origin_group_id
       }
     }
 
     dynamic "response_header_action" {
-      for_each = try(
-        [each.value.rule.actions[0].response_header_action], []
-      )
+      for_each = each.value.rule.actions[0].response_header_action != null ? [each.value.rule.actions[0].response_header_action] : []
 
       content {
         header_action = response_header_action.value.header_action
@@ -363,9 +363,7 @@ resource "azurerm_cdn_frontdoor_rule" "rules" {
     }
 
     dynamic "request_header_action" {
-      for_each = try(
-        [each.value.rule.actions[0].request_header_action], []
-      )
+      for_each = each.value.rule.actions[0].request_header_action != null ? [each.value.rule.actions[0].request_header_action] : []
 
       content {
         header_action = request_header_action.value.header_action
@@ -375,249 +373,207 @@ resource "azurerm_cdn_frontdoor_rule" "rules" {
     }
   }
 
-  dynamic "conditions" {
-    for_each = try(each.value.rule.conditions, null) != null ? { "default" = each.value.rule.conditions } : {}
+  conditions {
+    dynamic "remote_address_condition" {
+      for_each = each.value.rule.conditions.remote_address_condition != null ? [each.value.rule.conditions.remote_address_condition] : []
 
-    content {
-      dynamic "remote_address_condition" {
-        for_each = try(
-          [conditions.value.remote_address_condition], []
-        )
-
-        content {
-          operator         = remote_address_condition.value.operator
-          negate_condition = try(remote_address_condition.value.negate_condition, false)
-          match_values     = remote_address_condition.value.match_values
-        }
+      content {
+        operator         = remote_address_condition.value.operator
+        negate_condition = remote_address_condition.value.negate_condition
+        match_values     = remote_address_condition.value.match_values
       }
+    }
 
-      dynamic "client_port_condition" {
-        for_each = try(
-          [conditions.value.client_port_condition], []
-        )
+    dynamic "client_port_condition" {
+      for_each = each.value.rule.conditions.client_port_condition != null ? [each.value.rule.conditions.client_port_condition] : []
 
-        content {
-          operator         = client_port_condition.value.operator
-          match_values     = try(client_port_condition.value.match_values, [])
-          negate_condition = try(client_port_condition.value.negate_condition, false)
-        }
+      content {
+        operator         = client_port_condition.value.operator
+        match_values     = client_port_condition.value.match_values
+        negate_condition = client_port_condition.value.negate_condition
       }
+    }
 
-      dynamic "ssl_protocol_condition" {
-        for_each = try(
-          [conditions.value.ssl_protocol_condition], []
-        )
+    dynamic "ssl_protocol_condition" {
+      for_each = each.value.rule.conditions.ssl_protocol_condition != null ? [each.value.rule.conditions.ssl_protocol_condition] : []
 
-        content {
-          negate_condition = try(ssl_protocol_condition.value.negate_condition, false)
-          match_values     = try(ssl_protocol_condition.value.match_values, [])
-          operator         = try(ssl_protocol_condition.value.operator, "Equal")
-        }
+      content {
+        negate_condition = ssl_protocol_condition.value.negate_condition
+        match_values     = ssl_protocol_condition.value.match_values
+        operator         = ssl_protocol_condition.value.operator
       }
+    }
 
-      dynamic "socket_address_condition" {
-        for_each = try(
-          [conditions.value.socket_address_condition], []
-        )
+    dynamic "socket_address_condition" {
+      for_each = each.value.rule.conditions.socket_address_condition != null ? [each.value.rule.conditions.socket_address_condition] : []
 
-        content {
-          match_values     = try(socket_address_condition.value.match_values, [])
-          operator         = try(socket_address_condition.value.operator, "IPMatch")
-          negate_condition = try(socket_address_condition.value.negate_condition, false)
-        }
+      content {
+        match_values     = socket_address_condition.value.match_values
+        operator         = socket_address_condition.value.operator
+        negate_condition = socket_address_condition.value.negate_condition
       }
+    }
 
-      dynamic "server_port_condition" {
-        for_each = try(
-          [conditions.value.server_port_condition], []
-        )
+    dynamic "server_port_condition" {
+      for_each = each.value.rule.conditions.server_port_condition != null ? [each.value.rule.conditions.server_port_condition] : []
 
-        content {
-          negate_condition = try(server_port_condition.value.negate_condition, false)
-          operator         = server_port_condition.value.operator
-          match_values     = server_port_condition.value.match_values
-        }
+      content {
+        negate_condition = server_port_condition.value.negate_condition
+        operator         = server_port_condition.value.operator
+        match_values     = server_port_condition.value.match_values
       }
+    }
 
-      dynamic "host_name_condition" {
-        for_each = try(
-          [conditions.value.host_name_condition], []
-        )
+    dynamic "host_name_condition" {
+      for_each = each.value.rule.conditions.host_name_condition != null ? [each.value.rule.conditions.host_name_condition] : []
 
-        content {
-          match_values     = try(host_name_condition.value.match_values, [])
-          operator         = host_name_condition.value.operator
-          transforms       = try(host_name_condition.value.transforms, [])
-          negate_condition = try(host_name_condition.value.negate_condition, false)
-        }
+      content {
+        match_values     = host_name_condition.value.match_values
+        operator         = host_name_condition.value.operator
+        transforms       = host_name_condition.value.transforms
+        negate_condition = host_name_condition.value.negate_condition
       }
+    }
 
-      dynamic "request_method_condition" {
-        for_each = try(
-          [conditions.value.request_method_condition], []
-        )
+    dynamic "request_method_condition" {
+      for_each = each.value.rule.conditions.request_method_condition != null ? [each.value.rule.conditions.request_method_condition] : []
 
-        content {
-          match_values     = request_method_condition.value.match_values
-          operator         = try(request_method_condition.value.operator, "Equal")
-          negate_condition = try(request_method_condition.value.negate_condition, false)
-        }
+      content {
+        match_values     = request_method_condition.value.match_values
+        operator         = request_method_condition.value.operator
+        negate_condition = request_method_condition.value.negate_condition
       }
+    }
 
-      dynamic "query_string_condition" {
-        for_each = try(
-          [conditions.value.query_string_condition], []
-        )
+    dynamic "query_string_condition" {
+      for_each = each.value.rule.conditions.query_string_condition != null ? [each.value.rule.conditions.query_string_condition] : []
 
-        content {
-          operator         = query_string_condition.value.operator
-          negate_condition = try(query_string_condition.value.negate_condition, false)
-          match_values     = try(query_string_condition.value.match_values, [])
-          transforms       = try(query_string_condition.value.transforms, [])
-        }
+      content {
+        operator         = query_string_condition.value.operator
+        negate_condition = query_string_condition.value.negate_condition
+        match_values     = query_string_condition.value.match_values
+        transforms       = query_string_condition.value.transforms
       }
+    }
 
-      dynamic "post_args_condition" {
-        for_each = try(
-          [conditions.value.post_args_condition], []
-        )
+    dynamic "post_args_condition" {
+      for_each = each.value.rule.conditions.post_args_condition != null ? [each.value.rule.conditions.post_args_condition] : []
 
-        content {
-          operator         = post_args_condition.value.operator
-          post_args_name   = post_args_condition.value.post_args_name
-          transforms       = try(post_args_condition.value.transforms, [])
-          match_values     = try(post_args_condition.value.match_values, [])
-          negate_condition = try(post_args_condition.value.negate_condition, false)
-        }
+      content {
+        operator         = post_args_condition.value.operator
+        post_args_name   = post_args_condition.value.post_args_name
+        transforms       = post_args_condition.value.transforms
+        match_values     = post_args_condition.value.match_values
+        negate_condition = post_args_condition.value.negate_condition
       }
+    }
 
-      dynamic "request_uri_condition" {
-        for_each = try(
-          [conditions.value.request_uri_condition], []
-        )
+    dynamic "request_uri_condition" {
+      for_each = each.value.rule.conditions.request_uri_condition != null ? [each.value.rule.conditions.request_uri_condition] : []
 
-        content {
-          operator         = request_uri_condition.value.operator
-          negate_condition = try(request_uri_condition.value.negate_condition, false)
-          match_values     = try(request_uri_condition.value.match_values, null)
-          transforms       = try(request_uri_condition.value.transforms, [])
-        }
+      content {
+        operator         = request_uri_condition.value.operator
+        negate_condition = request_uri_condition.value.negate_condition
+        match_values     = request_uri_condition.value.match_values
+        transforms       = request_uri_condition.value.transforms
       }
+    }
 
-      dynamic "request_header_condition" {
-        for_each = try(
-          [conditions.value.request_header_condition], []
-        )
+    dynamic "request_header_condition" {
+      for_each = each.value.rule.conditions.request_header_condition != null ? [each.value.rule.conditions.request_header_condition] : []
 
-        content {
-          header_name      = request_header_condition.value.header_name
-          operator         = request_header_condition.value.operator
-          negate_condition = try(request_header_condition.value.negate_condition, false)
-          match_values     = request_header_condition.value.match_values
-          transforms       = try(request_header_condition.value.transforms, [])
-        }
+      content {
+        header_name      = request_header_condition.value.header_name
+        operator         = request_header_condition.value.operator
+        negate_condition = request_header_condition.value.negate_condition
+        match_values     = request_header_condition.value.match_values
+        transforms       = request_header_condition.value.transforms
       }
+    }
 
-      dynamic "request_body_condition" {
-        for_each = try(
-          [conditions.value.request_body_condition], []
-        )
+    dynamic "request_body_condition" {
+      for_each = each.value.rule.conditions.request_body_condition != null ? [each.value.rule.conditions.request_body_condition] : []
 
-        content {
-          operator         = request_body_condition.value.operator
-          match_values     = request_body_condition.value.match_values
-          negate_condition = try(request_body_condition.value.negate_condition, false)
-          transforms       = try(request_body_condition.value.transforms, [])
-        }
+      content {
+        operator         = request_body_condition.value.operator
+        match_values     = request_body_condition.value.match_values
+        negate_condition = request_body_condition.value.negate_condition
+        transforms       = request_body_condition.value.transforms
       }
+    }
 
-      dynamic "request_scheme_condition" {
-        for_each = try(
-          [conditions.value.request_scheme_condition], []
-        )
+    dynamic "request_scheme_condition" {
+      for_each = each.value.rule.conditions.request_scheme_condition != null ? [each.value.rule.conditions.request_scheme_condition] : []
 
-        content {
-          operator         = try(request_scheme_condition.value.operator, "Equal")
-          negate_condition = try(request_scheme_condition.value.negate_condition, false)
-          match_values     = try(request_scheme_condition.value.match_values, [])
-        }
+      content {
+        operator         = request_scheme_condition.value.operator
+        negate_condition = request_scheme_condition.value.negate_condition
+        match_values     = request_scheme_condition.value.match_values
       }
+    }
 
-      dynamic "url_path_condition" {
-        for_each = try(
-          [conditions.value.url_path_condition], []
-        )
+    dynamic "url_path_condition" {
+      for_each = each.value.rule.conditions.url_path_condition != null ? [each.value.rule.conditions.url_path_condition] : []
 
-        content {
-          operator         = url_path_condition.value.operator
-          negate_condition = try(url_path_condition.value.negate_condition, false)
-          match_values     = try(url_path_condition.value.match_values, [])
-          transforms       = try(url_path_condition.value.transforms, [])
-        }
+      content {
+        operator         = url_path_condition.value.operator
+        negate_condition = url_path_condition.value.negate_condition
+        match_values     = url_path_condition.value.match_values
+        transforms       = url_path_condition.value.transforms
       }
+    }
 
-      dynamic "url_file_extension_condition" {
-        for_each = try(
-          [conditions.value.url_file_extension_condition], []
-        )
+    dynamic "url_file_extension_condition" {
+      for_each = each.value.rule.conditions.url_file_extension_condition != null ? [each.value.rule.conditions.url_file_extension_condition] : []
 
-        content {
-          operator         = url_file_extension_condition.value.operator
-          negate_condition = try(url_file_extension_condition.value.negate_condition, false)
-          match_values     = url_file_extension_condition.value.match_values
-          transforms       = try(url_file_extension_condition.value.transforms, [])
-        }
+      content {
+        operator         = url_file_extension_condition.value.operator
+        negate_condition = url_file_extension_condition.value.negate_condition
+        match_values     = url_file_extension_condition.value.match_values
+        transforms       = url_file_extension_condition.value.transforms
       }
+    }
 
-      dynamic "url_filename_condition" {
-        for_each = try(
-          [conditions.value.url_filename_condition], []
-        )
+    dynamic "url_filename_condition" {
+      for_each = each.value.rule.conditions.url_filename_condition != null ? [each.value.rule.conditions.url_filename_condition] : []
 
-        content {
-          operator         = url_filename_condition.value.operator
-          negate_condition = try(url_filename_condition.value.negate_condition, false)
-          match_values     = try(url_filename_condition.value.match_values, [])
-          transforms       = try(url_filename_condition.value.transforms, [])
-        }
+      content {
+        operator         = url_filename_condition.value.operator
+        negate_condition = url_filename_condition.value.negate_condition
+        match_values     = url_filename_condition.value.match_values
+        transforms       = url_filename_condition.value.transforms
       }
+    }
 
-      dynamic "http_version_condition" {
-        for_each = try(
-          [conditions.value.http_version_condition], []
-        )
+    dynamic "http_version_condition" {
+      for_each = each.value.rule.conditions.http_version_condition != null ? [each.value.rule.conditions.http_version_condition] : []
 
-        content {
-          negate_condition = try(http_version_condition.value.negate_condition, false)
-          operator         = try(http_version_condition.value.operator, "Equal")
-          match_values     = http_version_condition.value.match_values
-        }
+      content {
+        negate_condition = http_version_condition.value.negate_condition
+        operator         = http_version_condition.value.operator
+        match_values     = http_version_condition.value.match_values
       }
+    }
 
-      dynamic "cookies_condition" {
-        for_each = try(
-          [conditions.value.cookies_condition], []
-        )
+    dynamic "cookies_condition" {
+      for_each = each.value.rule.conditions.cookies_condition != null ? [each.value.rule.conditions.cookies_condition] : []
 
-        content {
-          cookie_name      = cookies_condition.value.cookie_name
-          operator         = cookies_condition.value.operator
-          negate_condition = try(cookies_condition.value.negate_condition, false)
-          match_values     = try(cookies_condition.value.match_values, [])
-          transforms       = try(cookies_condition.value.transforms, [])
-        }
+      content {
+        cookie_name      = cookies_condition.value.cookie_name
+        operator         = cookies_condition.value.operator
+        negate_condition = cookies_condition.value.negate_condition
+        match_values     = cookies_condition.value.match_values
+        transforms       = cookies_condition.value.transforms
       }
+    }
 
-      dynamic "is_device_condition" {
-        for_each = try(
-          [conditions.value.is_device_condition], []
-        )
+    dynamic "is_device_condition" {
+      for_each = each.value.rule.conditions.is_device_condition != null ? [each.value.rule.conditions.is_device_condition] : []
 
-        content {
-          operator         = try(is_device_condition.value.operator, "Equal")
-          negate_condition = try(is_device_condition.value.negate_condition, false)
-          match_values     = try(is_device_condition.value.match_values, [])
-        }
+      content {
+        operator         = is_device_condition.value.operator
+        negate_condition = is_device_condition.value.negate_condition
+        match_values     = is_device_condition.value.match_values
       }
     }
   }
