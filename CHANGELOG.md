@@ -11,6 +11,11 @@
 
 * add type definitions and changed data structure ([#22](https://github.com/CloudNationHQ/terraform-azure-fd/issues/22)) ([7e1e3c6](https://github.com/CloudNationHQ/terraform-azure-fd/commit/7e1e3c6e0e32729c20361168b5c588b120146f6a))
 
+### Upgrade from v1.4.0 to v2.0.0:
+
+- Update module reference to: `version = "~> 2.0"`
+- The property and variable resource_group is renamed to resource_group_name
+
 ## [1.4.0](https://github.com/CloudNationHQ/terraform-azure-fd/compare/v1.3.0...v1.4.0) (2025-01-15)
 
 
