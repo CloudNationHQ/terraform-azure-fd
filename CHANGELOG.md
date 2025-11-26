@@ -1,5 +1,12 @@
 # Changelog
 
+## [2.1.0](https://github.com/CloudNationHQ/terraform-azure-fd/compare/v2.0.0...v2.1.0) (2025-11-26)
+
+
+### Features
+
+* increment all module versions to the latest and update documentation ([#24](https://github.com/CloudNationHQ/terraform-azure-fd/issues/24)) ([edbe227](https://github.com/CloudNationHQ/terraform-azure-fd/commit/edbe2273ba7988b2f6c60d57d25c9cac15cc5622))
+
 ## [2.0.0](https://github.com/CloudNationHQ/terraform-azure-fd/compare/v1.4.0...v2.0.0) (2025-09-30)
 
 
