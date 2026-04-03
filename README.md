@@ -338,9 +338,33 @@ The following outputs are exported:
 
 Description: contains custom domain configuration
 
+### <a name="output_endpoints"></a> [endpoints](#output\_endpoints)
+
+Description: contains frontdoor endpoint configuration
+
+### <a name="output_origin_groups"></a> [origin\_groups](#output\_origin\_groups)
+
+Description: contains origin group configuration
+
+### <a name="output_origins"></a> [origins](#output\_origins)
+
+Description: contains origin configuration
+
 ### <a name="output_profile"></a> [profile](#output\_profile)
 
 Description: contains frontdoor configuration
+
+### <a name="output_routes"></a> [routes](#output\_routes)
+
+Description: contains route configuration
+
+### <a name="output_rule_sets"></a> [rule\_sets](#output\_rule\_sets)
+
+Description: contains rule set configuration
+
+### <a name="output_rules"></a> [rules](#output\_rules)
+
+Description: contains rule configuration
 <!-- END_TF_DOCS -->
 
 ## Goals
