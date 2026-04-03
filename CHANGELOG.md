@@ -1,5 +1,15 @@
 # Changelog
 
+## [2.2.0](https://github.com/CloudNationHQ/terraform-azure-fd/compare/v2.1.0...v2.2.0) (2026-04-03)
+
+
+### Features
+
+* add missing outputs ([#31](https://github.com/CloudNationHQ/terraform-azure-fd/issues/31)) ([7bde5e0](https://github.com/CloudNationHQ/terraform-azure-fd/commit/7bde5e09d67066f802d6159efdc4c6fefcf7fac1))
+* **deps:** bump github.com/cloudnationhq/az-cn-go-validor in /tests ([#30](https://github.com/CloudNationHQ/terraform-azure-fd/issues/30)) ([8d71ac0](https://github.com/CloudNationHQ/terraform-azure-fd/commit/8d71ac06a8aef072a9514c54061968f4bbf3fe38))
+* **deps:** bump github.com/ulikunitz/xz from 0.5.10 to 0.5.14 in /tests ([#29](https://github.com/CloudNationHQ/terraform-azure-fd/issues/29)) ([dabfb9a](https://github.com/CloudNationHQ/terraform-azure-fd/commit/dabfb9af74efcbc861a89e8a8d945a70b1a851bc))
+* **deps:** bump golang.org/x/crypto from 0.36.0 to 0.45.0 in /tests ([#28](https://github.com/CloudNationHQ/terraform-azure-fd/issues/28)) ([b378c53](https://github.com/CloudNationHQ/terraform-azure-fd/commit/b378c53d29236c13085230ecec0f7d5493948409))
+
 ## [2.1.0](https://github.com/CloudNationHQ/terraform-azure-fd/compare/v2.0.0...v2.1.0) (2025-11-26)
 
 
