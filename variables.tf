@@ -75,8 +75,15 @@ variable "profile" {
               certificate_type = optional(string, "ManagedCertificate")
               tls = optional(object({
                 certificate_type        = optional(string, "ManagedCertificate")
-                minimum_tls_version     = optional(string, "TLS12")
+                minimum_version         = optional(string, "TLS12")
                 cdn_frontdoor_secret_id = optional(string)
+                cipher_suite = optional(object({
+                  type = string
+                  custom_ciphers = optional(object({
+                    tls12 = optional(set(string))
+                    tls13 = optional(set(string))
+                  }))
+                }))
               }), {})
             })), {})
             rule_sets = optional(map(object({
