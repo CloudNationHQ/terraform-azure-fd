@@ -67,7 +67,7 @@ variable "profile" {
               query_strings                 = optional(list(string), [])
               compression_enabled           = optional(bool, false)
               content_types_to_compress     = optional(list(string), [])
-            }), {})
+            }))
             custom_domains = optional(map(object({
               name             = optional(string)
               host_name        = string
