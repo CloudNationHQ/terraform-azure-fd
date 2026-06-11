@@ -1,5 +1,12 @@
 # Changelog
 
+## [2.2.1](https://github.com/CloudNationHQ/terraform-azure-fd/compare/v2.2.0...v2.2.1) (2026-06-11)
+
+
+### Bug Fixes
+
+* allow disabling route caching by defaulting cache to null ([#42](https://github.com/CloudNationHQ/terraform-azure-fd/issues/42)) ([5620c00](https://github.com/CloudNationHQ/terraform-azure-fd/commit/5620c00f450a219203ca6d59dd6f2ddcf5082431))
+
 ## [2.2.0](https://github.com/CloudNationHQ/terraform-azure-fd/compare/v2.1.0...v2.2.0) (2026-04-03)
 
 
