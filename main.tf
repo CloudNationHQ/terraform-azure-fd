@@ -1,6 +1,6 @@
 # existing
-data "azurerm_cdn_frontdoor_profile" "profile" {
-  for_each = var.profile.existing != null ? { "profile" = var.profile.existing } : {}
+data "azurerm_cdn_frontdoor_profile" "this" {
+  for_each = var.profile.existing != null ? { "this" = var.profile.existing } : {}
 
   name = each.value
 
@@ -11,18 +11,18 @@ data "azurerm_cdn_frontdoor_profile" "profile" {
 
 
 # profile
-resource "azurerm_cdn_frontdoor_profile" "profile" {
-  for_each = var.profile.existing != null ? {} : { "profile" = var.profile }
+resource "azurerm_cdn_frontdoor_profile" "this" {
+  for_each = var.profile.existing != null ? {} : { "this" = var.profile }
 
   name                     = each.value.name
   resource_group_name      = coalesce(each.value.resource_group_name, var.resource_group_name)
-  sku_name                 = each.value.sku_name
+  sku_name                 = coalesce(each.value.sku_name, "Standard_AzureFrontDoor")
   response_timeout_seconds = each.value.response_timeout_seconds
 
-  tags = merge(var.tags, each.value.tags)
+  tags = merge(var.tags, coalesce(each.value.tags, {}))
 
   dynamic "identity" {
-    for_each = each.value.identity != null ? [each.value.identity] : []
+    for_each = each.value.identity != null ? { "this" = each.value.identity } : {}
 
     content {
       type         = identity.value.type
@@ -40,7 +40,7 @@ resource "azurerm_cdn_frontdoor_profile" "profile" {
 }
 
 # endpoints
-resource "azurerm_cdn_frontdoor_endpoint" "eps" {
+resource "azurerm_cdn_frontdoor_endpoint" "this" {
   for_each = coalesce(var.profile.endpoints, {})
 
   name = coalesce(
@@ -49,12 +49,12 @@ resource "azurerm_cdn_frontdoor_endpoint" "eps" {
 
   tags = merge(var.tags, coalesce(each.value.tags, {}))
 
-  cdn_frontdoor_profile_id = var.profile.existing != null ? data.azurerm_cdn_frontdoor_profile.profile["profile"].id : azurerm_cdn_frontdoor_profile.profile["profile"].id
-  enabled                  = each.value.enabled
+  cdn_frontdoor_profile_id = var.profile.existing != null ? data.azurerm_cdn_frontdoor_profile.this["this"].id : azurerm_cdn_frontdoor_profile.this["this"].id
+  enabled                  = each.value.enabled != null ? each.value.enabled : true
 }
 
 # custom domains
-resource "azurerm_cdn_frontdoor_custom_domain" "domains" {
+resource "azurerm_cdn_frontdoor_custom_domain" "this" {
   for_each = {
     for item in flatten([
       for ep_key, ep in coalesce(var.profile.endpoints, {}) : [
@@ -81,22 +81,40 @@ resource "azurerm_cdn_frontdoor_custom_domain" "domains" {
     each.value.custom_domain.name, join("-", [var.naming.cdn_frontdoor_custom_domain, each.value.cd_key])
   )
 
-  cdn_frontdoor_profile_id = var.profile.existing != null ? data.azurerm_cdn_frontdoor_profile.profile["profile"].id : azurerm_cdn_frontdoor_profile.profile["profile"].id
+  cdn_frontdoor_profile_id = var.profile.existing != null ? data.azurerm_cdn_frontdoor_profile.this["this"].id : azurerm_cdn_frontdoor_profile.this["this"].id
   dns_zone_id              = each.value.custom_domain.dns_zone_id
   host_name                = each.value.custom_domain.host_name
 
   dynamic "tls" {
-    for_each = each.value.custom_domain.tls != null ? [each.value.custom_domain.tls] : []
+    for_each = each.value.custom_domain.tls != null ? { "this" = each.value.custom_domain.tls } : {}
 
     content {
-      certificate_type        = tls.value.certificate_type
+      certificate_type        = coalesce(tls.value.certificate_type, "ManagedCertificate")
+      minimum_version         = coalesce(tls.value.minimum_version, "TLS12")
       cdn_frontdoor_secret_id = tls.value.cdn_frontdoor_secret_id
+
+      dynamic "cipher_suite" {
+        for_each = tls.value.cipher_suite != null ? { "this" = tls.value.cipher_suite } : {}
+
+        content {
+          type = cipher_suite.value.type
+
+          dynamic "custom_ciphers" {
+            for_each = cipher_suite.value.custom_ciphers != null ? { "this" = cipher_suite.value.custom_ciphers } : {}
+
+            content {
+              tls12 = custom_ciphers.value.tls12
+              tls13 = custom_ciphers.value.tls13
+            }
+          }
+        }
+      }
     }
   }
 }
 
 # origin groups
-resource "azurerm_cdn_frontdoor_origin_group" "ogs" {
+resource "azurerm_cdn_frontdoor_origin_group" "this" {
   for_each = {
     for item in flatten([
       for ep_key, ep in coalesce(var.profile.endpoints, {}) : [
@@ -117,34 +135,30 @@ resource "azurerm_cdn_frontdoor_origin_group" "ogs" {
     each.value.og.name, join("-", [var.naming.cdn_frontdoor_origin_group, each.value.og_key])
   )
 
-  cdn_frontdoor_profile_id                                  = var.profile.existing != null ? data.azurerm_cdn_frontdoor_profile.profile["profile"].id : azurerm_cdn_frontdoor_profile.profile["profile"].id
+  cdn_frontdoor_profile_id                                  = var.profile.existing != null ? data.azurerm_cdn_frontdoor_profile.this["this"].id : azurerm_cdn_frontdoor_profile.this["this"].id
   session_affinity_enabled                                  = each.value.og.session_affinity_enabled
   restore_traffic_time_to_healed_or_new_endpoint_in_minutes = each.value.og.restore_traffic_time_to_healed_or_new_endpoint_in_minutes
 
   dynamic "health_probe" {
-    for_each = each.value.og.health_probe != null ? [each.value.og.health_probe] : []
+    for_each = each.value.og.health_probe != null ? { "this" = each.value.og.health_probe } : {}
 
     content {
-      interval_in_seconds = health_probe.value.interval_in_seconds
+      interval_in_seconds = coalesce(health_probe.value.interval_in_seconds, 100)
       path                = health_probe.value.path
       protocol            = health_probe.value.protocol
       request_type        = health_probe.value.request_type
     }
   }
 
-  dynamic "load_balancing" {
-    for_each = each.value.og.load_balancing != null ? [each.value.og.load_balancing] : []
-
-    content {
-      additional_latency_in_milliseconds = load_balancing.value.additional_latency_in_milliseconds
-      sample_size                        = load_balancing.value.sample_size
-      successful_samples_required        = load_balancing.value.successful_samples_required
-    }
+  load_balancing {
+    additional_latency_in_milliseconds = try(each.value.og.load_balancing.additional_latency_in_milliseconds, null)
+    sample_size                        = try(each.value.og.load_balancing.sample_size, null)
+    successful_samples_required        = try(each.value.og.load_balancing.successful_samples_required, null)
   }
 }
 
 # origins
-resource "azurerm_cdn_frontdoor_origin" "origins" {
+resource "azurerm_cdn_frontdoor_origin" "this" {
   for_each = {
     for item in flatten([
       for ep_key, ep in coalesce(var.profile.endpoints, {}) : [
@@ -168,9 +182,9 @@ resource "azurerm_cdn_frontdoor_origin" "origins" {
     each.value.origin.name, join("-", [var.naming.cdn_frontdoor_origin, each.value.origin_key])
   )
 
-  cdn_frontdoor_origin_group_id  = azurerm_cdn_frontdoor_origin_group.ogs["${each.value.endpoint}-${each.value.app}-${each.value.og}"].id
-  enabled                        = each.value.origin.enabled
-  certificate_name_check_enabled = each.value.origin.certificate_name_check_enabled
+  cdn_frontdoor_origin_group_id  = azurerm_cdn_frontdoor_origin_group.this["${each.value.endpoint}-${each.value.app}-${each.value.og}"].id
+  enabled                        = each.value.origin.enabled != null ? each.value.origin.enabled : true
+  certificate_name_check_enabled = each.value.origin.certificate_name_check_enabled != null ? each.value.origin.certificate_name_check_enabled : true
   host_name                      = each.value.origin.host_name
   http_port                      = each.value.origin.http_port
   https_port                     = each.value.origin.https_port
@@ -179,7 +193,7 @@ resource "azurerm_cdn_frontdoor_origin" "origins" {
   weight                         = each.value.origin.weight
 
   dynamic "private_link" {
-    for_each = each.value.origin.private_link != null ? [each.value.origin.private_link] : []
+    for_each = each.value.origin.private_link != null ? { "this" = each.value.origin.private_link } : {}
 
     content {
       request_message        = private_link.value.request_message
@@ -191,7 +205,7 @@ resource "azurerm_cdn_frontdoor_origin" "origins" {
 }
 
 # routes
-resource "azurerm_cdn_frontdoor_route" "routes" {
+resource "azurerm_cdn_frontdoor_route" "this" {
   for_each = {
     for item in flatten([
       for ep_key, ep in coalesce(var.profile.endpoints, {}) : [
@@ -217,29 +231,29 @@ resource "azurerm_cdn_frontdoor_route" "routes" {
     )
   )
 
-  cdn_frontdoor_endpoint_id     = azurerm_cdn_frontdoor_endpoint.eps[each.value.endpoint].id
-  cdn_frontdoor_origin_group_id = azurerm_cdn_frontdoor_origin_group.ogs["${each.value.endpoint}-${each.value.app}-${each.value.og}"].id
+  cdn_frontdoor_endpoint_id     = azurerm_cdn_frontdoor_endpoint.this[each.value.endpoint].id
+  cdn_frontdoor_origin_group_id = azurerm_cdn_frontdoor_origin_group.this["${each.value.endpoint}-${each.value.app}-${each.value.og}"].id
 
-  enabled                   = each.value.route.enabled
-  forwarding_protocol       = each.value.route.forwarding_protocol
-  https_redirect_enabled    = each.value.route.https_redirect_enabled
+  enabled                   = each.value.route.enabled != null ? each.value.route.enabled : true
+  forwarding_protocol       = coalesce(each.value.route.forwarding_protocol, "HttpsOnly")
+  https_redirect_enabled    = each.value.route.https_redirect_enabled != null ? each.value.route.https_redirect_enabled : true
   patterns_to_match         = each.value.route.patterns_to_match
-  supported_protocols       = each.value.route.supported_protocols
+  supported_protocols       = coalesce(each.value.route.supported_protocols, ["Http", "Https"])
   link_to_default_domain    = each.value.route.link_to_default_domain
   cdn_frontdoor_origin_path = each.value.route.cdn_frontdoor_origin_path
 
   cdn_frontdoor_origin_ids = [for origin_key in keys(coalesce(
     var.profile.endpoints[each.value.endpoint].applications[each.value.app].origin_groups[each.value.og].origins, {}
-  )) : azurerm_cdn_frontdoor_origin.origins["${each.value.endpoint}-${each.value.app}-${each.value.og}-${origin_key}"].id]
+  )) : azurerm_cdn_frontdoor_origin.this["${each.value.endpoint}-${each.value.app}-${each.value.og}-${origin_key}"].id]
 
   cdn_frontdoor_custom_domain_ids = [for cd_key in keys(coalesce(
     each.value.route.custom_domains, {}
-  )) : azurerm_cdn_frontdoor_custom_domain.domains["${each.value.endpoint}-${each.value.app}-${each.value.og}-${each.value.route_key}-${cd_key}"].id]
+  )) : azurerm_cdn_frontdoor_custom_domain.this["${each.value.endpoint}-${each.value.app}-${each.value.og}-${each.value.route_key}-${cd_key}"].id]
 
-  cdn_frontdoor_rule_set_ids = [for rs_key in keys(coalesce(each.value.route.rule_sets, {})) : azurerm_cdn_frontdoor_rule_set.rule_sets["${each.value.endpoint}-${each.value.app}-${each.value.og}-${each.value.route_key}-${rs_key}"].id]
+  cdn_frontdoor_rule_set_ids = [for rs_key in keys(coalesce(each.value.route.rule_sets, {})) : azurerm_cdn_frontdoor_rule_set.this["${each.value.endpoint}-${each.value.app}-${each.value.og}-${each.value.route_key}-${rs_key}"].id]
 
   dynamic "cache" {
-    for_each = each.value.route.cache != null ? [each.value.route.cache] : []
+    for_each = each.value.route.cache != null ? { "this" = each.value.route.cache } : {}
 
     content {
       query_string_caching_behavior = cache.value.query_string_caching_behavior
@@ -251,7 +265,7 @@ resource "azurerm_cdn_frontdoor_route" "routes" {
 }
 
 # rule sets
-resource "azurerm_cdn_frontdoor_rule_set" "rule_sets" {
+resource "azurerm_cdn_frontdoor_rule_set" "this" {
   for_each = {
     for item in flatten([
       for ep_key, ep in coalesce(var.profile.endpoints, {}) : [
@@ -278,11 +292,11 @@ resource "azurerm_cdn_frontdoor_rule_set" "rule_sets" {
     each.value.rs.name, join("", [var.naming.cdn_frontdoor_rule_set, each.value.rs_key])
   )
 
-  cdn_frontdoor_profile_id = var.profile.existing != null ? data.azurerm_cdn_frontdoor_profile.profile["profile"].id : azurerm_cdn_frontdoor_profile.profile["profile"].id
+  cdn_frontdoor_profile_id = var.profile.existing != null ? data.azurerm_cdn_frontdoor_profile.this["this"].id : azurerm_cdn_frontdoor_profile.this["this"].id
 }
 
 # rules
-resource "azurerm_cdn_frontdoor_rule" "rules" {
+resource "azurerm_cdn_frontdoor_rule" "this" {
   for_each = {
     for item in flatten([
       for ep_key, ep in coalesce(var.profile.endpoints, {}) : [
@@ -311,13 +325,13 @@ resource "azurerm_cdn_frontdoor_rule" "rules" {
   }
 
   name                      = each.value.rule_name
-  cdn_frontdoor_rule_set_id = azurerm_cdn_frontdoor_rule_set.rule_sets["${each.value.endpoint}-${each.value.app}-${each.value.og}-${each.value.route}-${each.value.rs}"].id
+  cdn_frontdoor_rule_set_id = azurerm_cdn_frontdoor_rule_set.this["${each.value.endpoint}-${each.value.app}-${each.value.og}-${each.value.route}-${each.value.rs}"].id
   order                     = each.value.rule.order
   behavior_on_match         = each.value.rule.behavior_on_match
 
   actions {
     dynamic "url_redirect_action" {
-      for_each = each.value.rule.actions[0].url_redirect_action != null ? [each.value.rule.actions[0].url_redirect_action] : []
+      for_each = each.value.rule.actions[0].url_redirect_action != null ? { "this" = each.value.rule.actions[0].url_redirect_action } : {}
 
       content {
         redirect_type        = url_redirect_action.value.redirect_type
@@ -330,7 +344,7 @@ resource "azurerm_cdn_frontdoor_rule" "rules" {
     }
 
     dynamic "url_rewrite_action" {
-      for_each = each.value.rule.actions[0].url_rewrite_action != null ? [each.value.rule.actions[0].url_rewrite_action] : []
+      for_each = each.value.rule.actions[0].url_rewrite_action != null ? { "this" = each.value.rule.actions[0].url_rewrite_action } : {}
 
       content {
         source_pattern          = url_rewrite_action.value.source_pattern
@@ -340,7 +354,7 @@ resource "azurerm_cdn_frontdoor_rule" "rules" {
     }
 
     dynamic "route_configuration_override_action" {
-      for_each = each.value.rule.actions[0].route_configuration_override_action != null ? [each.value.rule.actions[0].route_configuration_override_action] : []
+      for_each = each.value.rule.actions[0].route_configuration_override_action != null ? { "this" = each.value.rule.actions[0].route_configuration_override_action } : {}
 
       content {
         forwarding_protocol           = route_configuration_override_action.value.forwarding_protocol
@@ -354,7 +368,7 @@ resource "azurerm_cdn_frontdoor_rule" "rules" {
     }
 
     dynamic "response_header_action" {
-      for_each = each.value.rule.actions[0].response_header_action != null ? [each.value.rule.actions[0].response_header_action] : []
+      for_each = each.value.rule.actions[0].response_header_action != null ? { "this" = each.value.rule.actions[0].response_header_action } : {}
 
       content {
         header_action = response_header_action.value.header_action
@@ -364,7 +378,7 @@ resource "azurerm_cdn_frontdoor_rule" "rules" {
     }
 
     dynamic "request_header_action" {
-      for_each = each.value.rule.actions[0].request_header_action != null ? [each.value.rule.actions[0].request_header_action] : []
+      for_each = each.value.rule.actions[0].request_header_action != null ? { "this" = each.value.rule.actions[0].request_header_action } : {}
 
       content {
         header_action = request_header_action.value.header_action
@@ -376,7 +390,7 @@ resource "azurerm_cdn_frontdoor_rule" "rules" {
 
   conditions {
     dynamic "remote_address_condition" {
-      for_each = each.value.rule.conditions.remote_address_condition != null ? [each.value.rule.conditions.remote_address_condition] : []
+      for_each = each.value.rule.conditions.remote_address_condition != null ? { "this" = each.value.rule.conditions.remote_address_condition } : {}
 
       content {
         operator         = remote_address_condition.value.operator
@@ -386,7 +400,7 @@ resource "azurerm_cdn_frontdoor_rule" "rules" {
     }
 
     dynamic "client_port_condition" {
-      for_each = each.value.rule.conditions.client_port_condition != null ? [each.value.rule.conditions.client_port_condition] : []
+      for_each = each.value.rule.conditions.client_port_condition != null ? { "this" = each.value.rule.conditions.client_port_condition } : {}
 
       content {
         operator         = client_port_condition.value.operator
@@ -396,7 +410,7 @@ resource "azurerm_cdn_frontdoor_rule" "rules" {
     }
 
     dynamic "ssl_protocol_condition" {
-      for_each = each.value.rule.conditions.ssl_protocol_condition != null ? [each.value.rule.conditions.ssl_protocol_condition] : []
+      for_each = each.value.rule.conditions.ssl_protocol_condition != null ? { "this" = each.value.rule.conditions.ssl_protocol_condition } : {}
 
       content {
         negate_condition = ssl_protocol_condition.value.negate_condition
@@ -406,7 +420,7 @@ resource "azurerm_cdn_frontdoor_rule" "rules" {
     }
 
     dynamic "socket_address_condition" {
-      for_each = each.value.rule.conditions.socket_address_condition != null ? [each.value.rule.conditions.socket_address_condition] : []
+      for_each = each.value.rule.conditions.socket_address_condition != null ? { "this" = each.value.rule.conditions.socket_address_condition } : {}
 
       content {
         match_values     = socket_address_condition.value.match_values
@@ -416,7 +430,7 @@ resource "azurerm_cdn_frontdoor_rule" "rules" {
     }
 
     dynamic "server_port_condition" {
-      for_each = each.value.rule.conditions.server_port_condition != null ? [each.value.rule.conditions.server_port_condition] : []
+      for_each = each.value.rule.conditions.server_port_condition != null ? { "this" = each.value.rule.conditions.server_port_condition } : {}
 
       content {
         negate_condition = server_port_condition.value.negate_condition
@@ -426,7 +440,7 @@ resource "azurerm_cdn_frontdoor_rule" "rules" {
     }
 
     dynamic "host_name_condition" {
-      for_each = each.value.rule.conditions.host_name_condition != null ? [each.value.rule.conditions.host_name_condition] : []
+      for_each = each.value.rule.conditions.host_name_condition != null ? { "this" = each.value.rule.conditions.host_name_condition } : {}
 
       content {
         match_values     = host_name_condition.value.match_values
@@ -437,7 +451,7 @@ resource "azurerm_cdn_frontdoor_rule" "rules" {
     }
 
     dynamic "request_method_condition" {
-      for_each = each.value.rule.conditions.request_method_condition != null ? [each.value.rule.conditions.request_method_condition] : []
+      for_each = each.value.rule.conditions.request_method_condition != null ? { "this" = each.value.rule.conditions.request_method_condition } : {}
 
       content {
         match_values     = request_method_condition.value.match_values
@@ -447,7 +461,7 @@ resource "azurerm_cdn_frontdoor_rule" "rules" {
     }
 
     dynamic "query_string_condition" {
-      for_each = each.value.rule.conditions.query_string_condition != null ? [each.value.rule.conditions.query_string_condition] : []
+      for_each = each.value.rule.conditions.query_string_condition != null ? { "this" = each.value.rule.conditions.query_string_condition } : {}
 
       content {
         operator         = query_string_condition.value.operator
@@ -458,7 +472,7 @@ resource "azurerm_cdn_frontdoor_rule" "rules" {
     }
 
     dynamic "post_args_condition" {
-      for_each = each.value.rule.conditions.post_args_condition != null ? [each.value.rule.conditions.post_args_condition] : []
+      for_each = each.value.rule.conditions.post_args_condition != null ? { "this" = each.value.rule.conditions.post_args_condition } : {}
 
       content {
         operator         = post_args_condition.value.operator
@@ -470,7 +484,7 @@ resource "azurerm_cdn_frontdoor_rule" "rules" {
     }
 
     dynamic "request_uri_condition" {
-      for_each = each.value.rule.conditions.request_uri_condition != null ? [each.value.rule.conditions.request_uri_condition] : []
+      for_each = each.value.rule.conditions.request_uri_condition != null ? { "this" = each.value.rule.conditions.request_uri_condition } : {}
 
       content {
         operator         = request_uri_condition.value.operator
@@ -481,7 +495,7 @@ resource "azurerm_cdn_frontdoor_rule" "rules" {
     }
 
     dynamic "request_header_condition" {
-      for_each = each.value.rule.conditions.request_header_condition != null ? [each.value.rule.conditions.request_header_condition] : []
+      for_each = each.value.rule.conditions.request_header_condition != null ? { "this" = each.value.rule.conditions.request_header_condition } : {}
 
       content {
         header_name      = request_header_condition.value.header_name
@@ -493,7 +507,7 @@ resource "azurerm_cdn_frontdoor_rule" "rules" {
     }
 
     dynamic "request_body_condition" {
-      for_each = each.value.rule.conditions.request_body_condition != null ? [each.value.rule.conditions.request_body_condition] : []
+      for_each = each.value.rule.conditions.request_body_condition != null ? { "this" = each.value.rule.conditions.request_body_condition } : {}
 
       content {
         operator         = request_body_condition.value.operator
@@ -504,7 +518,7 @@ resource "azurerm_cdn_frontdoor_rule" "rules" {
     }
 
     dynamic "request_scheme_condition" {
-      for_each = each.value.rule.conditions.request_scheme_condition != null ? [each.value.rule.conditions.request_scheme_condition] : []
+      for_each = each.value.rule.conditions.request_scheme_condition != null ? { "this" = each.value.rule.conditions.request_scheme_condition } : {}
 
       content {
         operator         = request_scheme_condition.value.operator
@@ -514,7 +528,7 @@ resource "azurerm_cdn_frontdoor_rule" "rules" {
     }
 
     dynamic "url_path_condition" {
-      for_each = each.value.rule.conditions.url_path_condition != null ? [each.value.rule.conditions.url_path_condition] : []
+      for_each = each.value.rule.conditions.url_path_condition != null ? { "this" = each.value.rule.conditions.url_path_condition } : {}
 
       content {
         operator         = url_path_condition.value.operator
@@ -525,7 +539,7 @@ resource "azurerm_cdn_frontdoor_rule" "rules" {
     }
 
     dynamic "url_file_extension_condition" {
-      for_each = each.value.rule.conditions.url_file_extension_condition != null ? [each.value.rule.conditions.url_file_extension_condition] : []
+      for_each = each.value.rule.conditions.url_file_extension_condition != null ? { "this" = each.value.rule.conditions.url_file_extension_condition } : {}
 
       content {
         operator         = url_file_extension_condition.value.operator
@@ -536,7 +550,7 @@ resource "azurerm_cdn_frontdoor_rule" "rules" {
     }
 
     dynamic "url_filename_condition" {
-      for_each = each.value.rule.conditions.url_filename_condition != null ? [each.value.rule.conditions.url_filename_condition] : []
+      for_each = each.value.rule.conditions.url_filename_condition != null ? { "this" = each.value.rule.conditions.url_filename_condition } : {}
 
       content {
         operator         = url_filename_condition.value.operator
@@ -547,7 +561,7 @@ resource "azurerm_cdn_frontdoor_rule" "rules" {
     }
 
     dynamic "http_version_condition" {
-      for_each = each.value.rule.conditions.http_version_condition != null ? [each.value.rule.conditions.http_version_condition] : []
+      for_each = each.value.rule.conditions.http_version_condition != null ? { "this" = each.value.rule.conditions.http_version_condition } : {}
 
       content {
         negate_condition = http_version_condition.value.negate_condition
@@ -557,7 +571,7 @@ resource "azurerm_cdn_frontdoor_rule" "rules" {
     }
 
     dynamic "cookies_condition" {
-      for_each = each.value.rule.conditions.cookies_condition != null ? [each.value.rule.conditions.cookies_condition] : []
+      for_each = each.value.rule.conditions.cookies_condition != null ? { "this" = each.value.rule.conditions.cookies_condition } : {}
 
       content {
         cookie_name      = cookies_condition.value.cookie_name
@@ -569,7 +583,7 @@ resource "azurerm_cdn_frontdoor_rule" "rules" {
     }
 
     dynamic "is_device_condition" {
-      for_each = each.value.rule.conditions.is_device_condition != null ? [each.value.rule.conditions.is_device_condition] : []
+      for_each = each.value.rule.conditions.is_device_condition != null ? { "this" = each.value.rule.conditions.is_device_condition } : {}
 
       content {
         operator         = is_device_condition.value.operator

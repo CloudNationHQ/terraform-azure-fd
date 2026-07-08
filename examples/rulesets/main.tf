@@ -50,10 +50,10 @@ module "policy" {
           patterns_to_match = ["/*"]
           domains = {
             website = {
-              domain_id = module.frontdoor.custom_domains.portal.id
+              domain_id = module.frontdoor.custom_domains["demo-portal-apps-main-portal"].id
             }
             another = {
-              domain_id = module.frontdoor.custom_domains.backup.id
+              domain_id = module.frontdoor.custom_domains["demo-portal-apps-legacy-backup"].id
             }
           }
         }
@@ -64,7 +64,7 @@ module "policy" {
 
 module "frontdoor" {
   source  = "cloudnationhq/fd/azure"
-  version = "~> 2.0"
+  version = "~> 3.0"
 
   naming = local.naming
 

@@ -33,8 +33,8 @@ locals {
               portal = {
                 host_name = "www.portal.com"
                 tls = {
-                  certificate_type    = "ManagedCertificate"
-                  minimum_tls_version = "TLS12"
+                  certificate_type = "ManagedCertificate"
+                  minimum_version  = "TLS12"
                 }
               }
             }
@@ -74,15 +74,15 @@ locals {
               web = {
                 host_name = "web.example.com"
                 tls = {
-                  certificate_type    = "ManagedCertificate"
-                  minimum_tls_version = "TLS12"
+                  certificate_type = "ManagedCertificate"
+                  minimum_version  = "TLS12"
                 }
               }
               backup = {
                 host_name = "backup.example.com"
                 tls = {
-                  certificate_type    = "ManagedCertificate"
-                  minimum_tls_version = "TLS12"
+                  certificate_type = "ManagedCertificate"
+                  minimum_version  = "TLS12"
                 }
               }
             }
