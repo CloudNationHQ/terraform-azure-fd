@@ -19,7 +19,7 @@ resource "azurerm_cdn_frontdoor_profile" "this" {
   sku_name                 = coalesce(each.value.sku_name, "Standard_AzureFrontDoor")
   response_timeout_seconds = each.value.response_timeout_seconds
 
-  tags = merge(var.tags, coalesce(each.value.tags, {}))
+  tags = coalesce(each.value.tags, var.tags)
 
   dynamic "identity" {
     for_each = each.value.identity != null ? { "this" = each.value.identity } : {}
@@ -47,10 +47,10 @@ resource "azurerm_cdn_frontdoor_endpoint" "this" {
     each.value.name, join("-", [var.naming.cdn_frontdoor_endpoint, each.key])
   )
 
-  tags = merge(var.tags, coalesce(each.value.tags, {}))
+  tags = coalesce(each.value.tags, var.tags)
 
   cdn_frontdoor_profile_id = var.profile.existing != null ? data.azurerm_cdn_frontdoor_profile.this["this"].id : azurerm_cdn_frontdoor_profile.this["this"].id
-  enabled                  = each.value.enabled != null ? each.value.enabled : true
+  enabled                  = each.value.enabled
 }
 
 # custom domains
@@ -143,7 +143,7 @@ resource "azurerm_cdn_frontdoor_origin_group" "this" {
     for_each = each.value.og.health_probe != null ? { "this" = each.value.og.health_probe } : {}
 
     content {
-      interval_in_seconds = coalesce(health_probe.value.interval_in_seconds, 100)
+      interval_in_seconds = health_probe.value.interval_in_seconds
       path                = health_probe.value.path
       protocol            = health_probe.value.protocol
       request_type        = health_probe.value.request_type
@@ -234,7 +234,7 @@ resource "azurerm_cdn_frontdoor_route" "this" {
   cdn_frontdoor_endpoint_id     = azurerm_cdn_frontdoor_endpoint.this[each.value.endpoint].id
   cdn_frontdoor_origin_group_id = azurerm_cdn_frontdoor_origin_group.this["${each.value.endpoint}-${each.value.app}-${each.value.og}"].id
 
-  enabled                   = each.value.route.enabled != null ? each.value.route.enabled : true
+  enabled                   = each.value.route.enabled
   forwarding_protocol       = coalesce(each.value.route.forwarding_protocol, "HttpsOnly")
   https_redirect_enabled    = each.value.route.https_redirect_enabled != null ? each.value.route.https_redirect_enabled : true
   patterns_to_match         = each.value.route.patterns_to_match
@@ -262,6 +262,8 @@ resource "azurerm_cdn_frontdoor_route" "this" {
       content_types_to_compress     = cache.value.content_types_to_compress
     }
   }
+
+
 }
 
 # rule sets
@@ -328,6 +330,11 @@ resource "azurerm_cdn_frontdoor_rule" "this" {
   cdn_frontdoor_rule_set_id = azurerm_cdn_frontdoor_rule_set.this["${each.value.endpoint}-${each.value.app}-${each.value.og}-${each.value.route}-${each.value.rs}"].id
   order                     = each.value.rule.order
   behavior_on_match         = each.value.rule.behavior_on_match
+
+  depends_on = [
+    azurerm_cdn_frontdoor_origin.this,
+    azurerm_cdn_frontdoor_origin_group.this,
+  ]
 
   actions {
     dynamic "url_redirect_action" {

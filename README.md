@@ -89,9 +89,9 @@ object({
           session_affinity_enabled                                  = optional(bool)
           restore_traffic_time_to_healed_or_new_endpoint_in_minutes = optional(number)
           health_probe = optional(object({
-            interval_in_seconds = optional(number)
+            interval_in_seconds = number
             path                = optional(string)
-            protocol            = optional(string)
+            protocol            = string
             request_type        = optional(string)
           }))
           load_balancing = optional(object({
@@ -192,7 +192,7 @@ object({
                   remote_address_condition = optional(object({
                     operator         = string
                     negate_condition = optional(bool)
-                    match_values     = list(string)
+                    match_values     = optional(list(string))
                   }))
                   client_port_condition = optional(object({
                     operator         = string
@@ -248,7 +248,7 @@ object({
                     header_name      = string
                     operator         = string
                     negate_condition = optional(bool)
-                    match_values     = list(string)
+                    match_values     = optional(list(string))
                     transforms       = optional(list(string))
                   }))
                   request_body_condition = optional(object({

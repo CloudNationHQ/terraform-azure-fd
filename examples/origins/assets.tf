@@ -7,8 +7,9 @@ locals {
           successful_samples_required = 3
         }
         health_probe = {
-          path     = "/health"
-          protocol = "Https"
+          interval_in_seconds = 100
+          path                = "/health"
+          protocol            = "Https"
         }
         origins = {
           storage = {
