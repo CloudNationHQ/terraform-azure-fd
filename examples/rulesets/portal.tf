@@ -7,8 +7,9 @@ locals {
           successful_samples_required = 3
         }
         health_probe = {
-          path     = "/health"
-          protocol = "Https"
+          interval_in_seconds = 100
+          path                = "/health"
+          protocol            = "Https"
         }
         origins = {
           west = {
@@ -33,8 +34,8 @@ locals {
               portal = {
                 host_name = "www.portal.com"
                 tls = {
-                  certificate_type    = "ManagedCertificate"
-                  minimum_tls_version = "TLS12"
+                  certificate_type = "ManagedCertificate"
+                  minimum_version  = "TLS12"
                 }
               }
             }
@@ -74,15 +75,15 @@ locals {
               web = {
                 host_name = "web.example.com"
                 tls = {
-                  certificate_type    = "ManagedCertificate"
-                  minimum_tls_version = "TLS12"
+                  certificate_type = "ManagedCertificate"
+                  minimum_version  = "TLS12"
                 }
               }
               backup = {
                 host_name = "backup.example.com"
                 tls = {
-                  certificate_type    = "ManagedCertificate"
-                  minimum_tls_version = "TLS12"
+                  certificate_type = "ManagedCertificate"
+                  minimum_version  = "TLS12"
                 }
               }
             }
@@ -99,10 +100,9 @@ locals {
                     behavior_on_match = "Continue"
                     actions = [{
                       url_redirect_action = {
-                        redirect_type           = "Found"
-                        destination_hostname    = "www.example.com"
-                        destination_path        = "/secunda/new/"
-                        preserve_unmatched_path = true
+                        redirect_type        = "Found"
+                        destination_hostname = "www.example.com"
+                        destination_path     = "/secunda/new/"
                       }
                     }]
                     conditions = {
