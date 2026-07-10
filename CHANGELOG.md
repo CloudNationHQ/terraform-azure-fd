@@ -1,5 +1,19 @@
 # Changelog
 
+## [3.0.0](https://github.com/CloudNationHQ/terraform-azure-fd/compare/v2.2.1...v3.0.0) (2026-07-10)
+
+
+### ⚠ BREAKING CHANGES
+
+* refactor module to v3 conventions and fix minimum_version deprecation ([#46](https://github.com/CloudNationHQ/terraform-azure-fd/issues/46))
+
+### Features
+
+* **deps:** bump github.com/cloudnationhq/az-cn-go-validor in /tests ([#34](https://github.com/CloudNationHQ/terraform-azure-fd/issues/34)) ([c7d167f](https://github.com/CloudNationHQ/terraform-azure-fd/commit/c7d167fb6d015e0d13ee135f179f3bd6a8b8c9c4))
+* **deps:** bump golang.org/x/crypto from 0.51.0 to 0.52.0 in /tests ([#47](https://github.com/CloudNationHQ/terraform-azure-fd/issues/47)) ([f05109f](https://github.com/CloudNationHQ/terraform-azure-fd/commit/f05109fa3d37a3b9d57aeb0b72813d41d102aa1b))
+* **deps:** bump golang.org/x/net from 0.47.0 to 0.55.0 in /tests ([#44](https://github.com/CloudNationHQ/terraform-azure-fd/issues/44)) ([f5c8ff3](https://github.com/CloudNationHQ/terraform-azure-fd/commit/f5c8ff3daeb8989eab801c0e7744bfdf20a18d9a))
+* refactor module to v3 conventions and fix minimum_version deprecation ([#46](https://github.com/CloudNationHQ/terraform-azure-fd/issues/46)) ([7588dfa](https://github.com/CloudNationHQ/terraform-azure-fd/commit/7588dfa77a25fa5d89170a9d528f0819d24c9c12))
+
 ## [2.2.1](https://github.com/CloudNationHQ/terraform-azure-fd/compare/v2.2.0...v2.2.1) (2026-06-11)
 
 
