@@ -1,5 +1,16 @@
 # Changelog
 
+## [4.0.0](https://github.com/CloudNationHQ/terraform-azure-fd/compare/v3.0.0...v4.0.0) (2026-09-09)
+
+
+### ⚠ BREAKING CHANGES
+
+* this change causes recreates
+
+### Features
+
+* azurerm provider 5 upgrade ([#49](https://github.com/CloudNationHQ/terraform-azure-fd/issues/49)) ([a202f71](https://github.com/CloudNationHQ/terraform-azure-fd/commit/a202f715945fc7cbd048d60e32c3b01a3f32ae16))
+
 ## [3.0.0](https://github.com/CloudNationHQ/terraform-azure-fd/compare/v2.2.1...v3.0.0) (2026-07-10)
 
 
