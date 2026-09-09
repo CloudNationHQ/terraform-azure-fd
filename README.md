@@ -31,13 +31,13 @@ The following requirements are needed by this module:
 
 - <a name="requirement_terraform"></a> [terraform](#requirement\_terraform) (~> 1.0)
 
-- <a name="requirement_azurerm"></a> [azurerm](#requirement\_azurerm) (~> 4.0)
+- <a name="requirement_azurerm"></a> [azurerm](#requirement\_azurerm) (~> 5.0)
 
 ## Providers
 
 The following providers are used by this module:
 
-- <a name="provider_azurerm"></a> [azurerm](#provider\_azurerm) (~> 4.0)
+- <a name="provider_azurerm"></a> [azurerm](#provider\_azurerm) (~> 5.0)
 
 ## Resources
 
@@ -68,7 +68,7 @@ object({
     name                     = optional(string)
     location                 = optional(string)
     resource_group_name      = optional(string)
-    sku_name                 = optional(string)
+    sku_name                 = optional(string, "Standard_AzureFrontDoor")
     response_timeout_seconds = optional(number)
     tags                     = optional(map(string))
     existing                 = optional(string)
@@ -98,11 +98,11 @@ object({
             additional_latency_in_milliseconds = optional(number)
             sample_size                        = optional(number)
             successful_samples_required        = optional(number)
-          }))
+          }), {})
           origins = optional(map(object({
             name                           = optional(string)
             host_name                      = string
-            certificate_name_check_enabled = optional(bool)
+            certificate_name_check_enabled = optional(bool, true)
             enabled                        = optional(bool)
             http_port                      = optional(number)
             https_port                     = optional(number)
@@ -119,10 +119,10 @@ object({
           routes = optional(map(object({
             name                      = optional(string)
             enabled                   = optional(bool)
-            forwarding_protocol       = optional(string)
+            forwarding_protocol       = optional(string, "HttpsOnly")
             https_redirect_enabled    = optional(bool)
             patterns_to_match         = list(string)
-            supported_protocols       = optional(list(string))
+            supported_protocols       = optional(list(string), ["Http", "Https"])
             cdn_frontdoor_origin_path = optional(string)
             link_to_default_domain    = optional(bool)
             cache = optional(object({
@@ -151,154 +151,139 @@ object({
             rule_sets = optional(map(object({
               name = optional(string)
               rules = optional(map(object({
-                name              = optional(string)
-                order             = number
-                behavior_on_match = optional(string)
+                name               = optional(string)
+                order              = number
+                behaviour_on_match = optional(string)
                 actions = optional(list(object({
-                  url_redirect_action = optional(object({
-                    redirect_type        = string
-                    destination_hostname = string
-                    destination_path     = optional(string)
-                    query_string         = optional(string)
-                    destination_fragment = optional(string)
-                    redirect_protocol    = optional(string)
+                  url_redirect = optional(object({
+                    redirect_type         = string
+                    destination_host_name = optional(string)
+                    destination_path      = optional(string)
+                    query_string          = optional(string)
+                    destination_fragment  = optional(string)
+                    redirect_protocol     = optional(string)
                   }))
-                  url_rewrite_action = optional(object({
-                    source_pattern          = string
-                    destination             = string
-                    preserve_unmatched_path = optional(bool)
+                  url_rewrite = optional(object({
+                    source_pattern                  = string
+                    destination_path                = string
+                    preserve_unmatched_path_enabled = optional(bool)
                   }))
-                  route_configuration_override_action = optional(object({
-                    forwarding_protocol           = optional(string)
-                    cache_duration                = optional(string)
-                    cache_behavior                = optional(string)
-                    query_string_caching_behavior = optional(string)
-                    compression_enabled           = optional(bool)
-                    query_string_parameters       = optional(list(string))
-                    cdn_frontdoor_origin_group_id = optional(string)
+                  route_configuration_override = optional(object({
+                    caching = object({
+                      behaviour               = string
+                      compression_enabled     = optional(bool)
+                      duration                = optional(string)
+                      query_string_behaviour  = optional(string)
+                      query_string_parameters = optional(list(string))
+                    })
+                    origin_group = optional(object({
+                      forwarding_protocol           = optional(string)
+                      cdn_frontdoor_origin_group_id = optional(string)
+                    }))
                   }))
-                  response_header_action = optional(object({
-                    header_action = string
-                    header_name   = string
-                    value         = string
+                  modify_response_header = optional(object({
+                    operator     = string
+                    header_name  = string
+                    header_value = string
                   }))
-                  request_header_action = optional(object({
-                    header_action = string
-                    header_name   = string
-                    value         = string
+                  modify_request_header = optional(object({
+                    operator     = string
+                    header_name  = string
+                    header_value = string
                   }))
                 })), [])
-                conditions = optional(object({
-                  remote_address_condition = optional(object({
-                    operator         = string
-                    negate_condition = optional(bool)
-                    match_values     = optional(list(string))
+                conditions = optional(list(object({
+                  remote_address = optional(object({
+                    operator = string
+                    values   = list(string)
                   }))
-                  client_port_condition = optional(object({
-                    operator         = string
-                    match_values     = optional(list(string))
-                    negate_condition = optional(bool)
+                  client_port = optional(object({
+                    operator = string
+                    values   = optional(list(string))
                   }))
-                  ssl_protocol_condition = optional(object({
-                    negate_condition = optional(bool)
-                    match_values     = optional(list(string))
-                    operator         = optional(string)
+                  ssl_protocol = optional(object({
+                    operator = string
+                    values   = list(string)
                   }))
-                  socket_address_condition = optional(object({
-                    match_values     = optional(list(string))
-                    operator         = optional(string)
-                    negate_condition = optional(bool)
+                  socket_address = optional(object({
+                    operator = string
+                    values   = list(string)
                   }))
-                  server_port_condition = optional(object({
-                    negate_condition = optional(bool)
-                    operator         = string
-                    match_values     = list(string)
+                  server_port = optional(object({
+                    operator = string
+                    values   = optional(list(string))
                   }))
-                  host_name_condition = optional(object({
-                    match_values     = optional(list(string))
-                    operator         = string
-                    transforms       = optional(list(string))
-                    negate_condition = optional(bool)
+                  host_name = optional(object({
+                    operator   = string
+                    values     = optional(list(string))
+                    transforms = optional(list(string))
                   }))
-                  request_method_condition = optional(object({
-                    match_values     = list(string)
-                    operator         = optional(string)
-                    negate_condition = optional(bool)
+                  request_method = optional(object({
+                    operator = string
+                    values   = list(string)
                   }))
-                  query_string_condition = optional(object({
-                    operator         = string
-                    negate_condition = optional(bool)
-                    match_values     = optional(list(string))
-                    transforms       = optional(list(string))
+                  query_string = optional(object({
+                    operator   = string
+                    values     = optional(list(string))
+                    transforms = optional(list(string))
                   }))
-                  post_args_condition = optional(object({
-                    operator         = string
-                    post_args_name   = string
-                    transforms       = optional(list(string))
-                    match_values     = optional(list(string))
-                    negate_condition = optional(bool)
+                  post_argument = optional(object({
+                    name       = string
+                    operator   = string
+                    values     = optional(list(string))
+                    transforms = optional(list(string))
                   }))
-                  request_uri_condition = optional(object({
-                    operator         = string
-                    negate_condition = optional(bool)
-                    match_values     = optional(list(string))
-                    transforms       = optional(list(string))
+                  request_url = optional(object({
+                    operator   = string
+                    values     = optional(list(string))
+                    transforms = optional(list(string))
                   }))
-                  request_header_condition = optional(object({
-                    header_name      = string
-                    operator         = string
-                    negate_condition = optional(bool)
-                    match_values     = optional(list(string))
-                    transforms       = optional(list(string))
+                  request_header = optional(object({
+                    name       = string
+                    operator   = string
+                    values     = optional(list(string))
+                    transforms = optional(list(string))
                   }))
-                  request_body_condition = optional(object({
-                    operator         = string
-                    match_values     = list(string)
-                    negate_condition = optional(bool)
-                    transforms       = optional(list(string))
+                  request_body = optional(object({
+                    operator   = string
+                    values     = optional(list(string))
+                    transforms = optional(list(string))
                   }))
-                  request_scheme_condition = optional(object({
-                    operator         = optional(string)
-                    negate_condition = optional(bool)
-                    match_values     = optional(list(string))
+                  request_scheme = optional(object({
+                    operator = string
+                    values   = list(string)
                   }))
-                  url_path_condition = optional(object({
-                    operator         = string
-                    negate_condition = optional(bool)
-                    match_values     = optional(list(string))
-                    transforms       = optional(list(string))
+                  request_path = optional(object({
+                    operator   = string
+                    values     = optional(list(string))
+                    transforms = optional(list(string))
                   }))
-                  url_file_extension_condition = optional(object({
-                    operator         = string
-                    negate_condition = optional(bool)
-                    match_values     = list(string)
-                    transforms       = optional(list(string))
+                  request_file_extension = optional(object({
+                    operator   = string
+                    values     = optional(list(string))
+                    transforms = optional(list(string))
                   }))
-                  url_filename_condition = optional(object({
-                    operator         = string
-                    negate_condition = optional(bool)
-                    match_values     = optional(list(string))
-                    transforms       = optional(list(string))
+                  request_filename = optional(object({
+                    operator   = string
+                    values     = optional(list(string))
+                    transforms = optional(list(string))
                   }))
-                  http_version_condition = optional(object({
-                    negate_condition = optional(bool)
-                    operator         = optional(string)
-                    match_values     = list(string)
+                  request_cookies = optional(object({
+                    name       = string
+                    operator   = string
+                    values     = optional(list(string))
+                    transforms = optional(list(string))
                   }))
-                  cookies_condition = optional(object({
-                    cookie_name      = string
-                    operator         = string
-                    negate_condition = optional(bool)
-                    match_values     = optional(list(string))
-                    transforms       = optional(list(string))
+                  device_type = optional(object({
+                    operator = string
+                    values   = list(string)
                   }))
-                  is_device_condition = optional(object({
-                    operator         = optional(string)
-                    negate_condition = optional(bool)
-                    match_values     = optional(list(string))
+                  http_version = optional(object({
+                    operator = string
+                    values   = list(string)
                   }))
-                }), {})
-              })))
+                })), [])
+              })), {})
             })), {})
           })), {})
         })), {})
@@ -311,13 +296,13 @@ object({
 
 The following input variables are optional (have default values):
 
-### <a name="input_naming"></a> [naming](#input\_naming)
+### <a name="input_location"></a> [location](#input\_location)
 
-Description: contains naming convention
+Description: default azure location to be used.
 
-Type: `map(string)`
+Type: `string`
 
-Default: `{}`
+Default: `null`
 
 ### <a name="input_resource_group_name"></a> [resource\_group\_name](#input\_resource\_group\_name)
 
@@ -392,11 +377,7 @@ To update the module's documentation run `make doc`
 
 We welcome contributions from the community! Whether it's reporting a bug, suggesting a new feature, or submitting a pull request, your input is highly valued.
 
-For more information, please see our contribution [guidelines](./CONTRIBUTING.md). <br><br>
-
-<a href="https://github.com/cloudnationhq/terraform-azure-fd/graphs/contributors">
-  <img src="https://contrib.rocks/image?repo=cloudnationhq/terraform-azure-fd" />
-</a>
+For more information, please see our contribution [guidelines](./CONTRIBUTING.md).
 
 ## License
 
@@ -406,4 +387,3 @@ MIT Licensed. See [LICENSE](./LICENSE) for full details.
 
 - [Documentation](https://learn.microsoft.com/en-us/azure/frontdoor/)
 - [Rest Api](https://learn.microsoft.com/en-us/rest/api/frontdoor/)
-- [Rest Api Specs](https://github.com/hashicorp/pandora/tree/main/api-definitions/resource-manager/FrontDoor)
