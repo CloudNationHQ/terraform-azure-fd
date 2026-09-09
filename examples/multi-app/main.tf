@@ -1,5 +1,4 @@
 module "naming" {
-
   source  = "cloudnationhq/naming/azure"
   version = "~> 0.32"
 
@@ -23,7 +22,7 @@ module "frontdoor" {
   version = "~> 4.0"
 
   profile = {
-    name                = module.naming.cdn_frontdoor_profile.name
+    name                = module.naming.cdn_frontdoor_profile.name_unique
     resource_group_name = module.rg.groups.demo.name
     location            = module.rg.groups.demo.location
 
@@ -31,23 +30,8 @@ module "frontdoor" {
       demo = {
         name = module.naming.cdn_frontdoor_endpoint.name_unique
         applications = {
-          portal = {
-            origin_groups = {
-              apps = {
-                origins = {
-                  primary = {
-                    host_name          = "example-web-app.azurewebsites.net"
-                    origin_host_header = "example-web-app.azurewebsites.net"
-                  }
-                }
-                routes = {
-                  default = {
-                    patterns_to_match = ["/*"]
-                  }
-                }
-              }
-            }
-          }
+          web = local.web
+          api = local.api
         }
       }
     }

@@ -1,13 +1,13 @@
 module "naming" {
   source  = "cloudnationhq/naming/azure"
-  version = "~> 0.25"
+  version = "~> 0.32"
 
   suffix = ["demo", "dev"]
 }
 
 module "rg" {
   source  = "cloudnationhq/rg/azure"
-  version = "~> 2.0"
+  version = "~> 3.0"
 
   groups = {
     demo = {
@@ -19,17 +19,14 @@ module "rg" {
 
 module "policy" {
   source  = "cloudnationhq/fdfwp/azure"
-  version = "~> 2.0"
+  version = "~> 3.0"
 
-  config = {
+  cdn_frontdoor_firewall_policy = {
     name                = module.naming.cdn_frontdoor_firewall_policy.name
     frontdoor_id        = module.frontdoor.profile.id
     resource_group_name = module.rg.groups.demo.name
     sku_name            = "Premium_AzureFrontDoor"
-
-    policy = {
-      mode = "Prevention"
-    }
+    mode                = "Prevention"
 
     managed_rules = {
       default = {
@@ -64,13 +61,12 @@ module "policy" {
 
 module "frontdoor" {
   source  = "cloudnationhq/fd/azure"
-  version = "~> 3.0"
-
-  naming = local.naming
+  version = "~> 4.0"
 
   profile = {
     name                = module.naming.cdn_frontdoor_profile.name_unique
     resource_group_name = module.rg.groups.demo.name
+    location            = module.rg.groups.demo.location
     sku_name            = "Premium_AzureFrontDoor"
 
     endpoints = {

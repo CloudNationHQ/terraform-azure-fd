@@ -14,12 +14,17 @@ data "azurerm_cdn_frontdoor_profile" "this" {
 resource "azurerm_cdn_frontdoor_profile" "this" {
   for_each = var.profile.existing != null ? {} : { "this" = var.profile }
 
+  resource_group_name = coalesce(
+    each.value.resource_group_name, var.resource_group_name
+  )
+
   name                     = each.value.name
-  resource_group_name      = coalesce(each.value.resource_group_name, var.resource_group_name)
-  sku_name                 = coalesce(each.value.sku_name, "Standard_AzureFrontDoor")
+  sku_name                 = each.value.sku_name
   response_timeout_seconds = each.value.response_timeout_seconds
 
-  tags = coalesce(each.value.tags, var.tags)
+  tags = coalesce(
+    each.value.tags, var.tags
+  )
 
   dynamic "identity" {
     for_each = each.value.identity != null ? { "this" = each.value.identity } : {}
@@ -41,13 +46,15 @@ resource "azurerm_cdn_frontdoor_profile" "this" {
 
 # endpoints
 resource "azurerm_cdn_frontdoor_endpoint" "this" {
-  for_each = coalesce(var.profile.endpoints, {})
+  for_each = var.profile.endpoints
 
   name = coalesce(
-    each.value.name, join("-", [var.naming.cdn_frontdoor_endpoint, each.key])
+    each.value.name, each.key
   )
 
-  tags = coalesce(each.value.tags, var.tags)
+  tags = coalesce(
+    each.value.tags, var.tags
+  )
 
   cdn_frontdoor_profile_id = var.profile.existing != null ? data.azurerm_cdn_frontdoor_profile.this["this"].id : azurerm_cdn_frontdoor_profile.this["this"].id
   enabled                  = each.value.enabled
@@ -55,30 +62,23 @@ resource "azurerm_cdn_frontdoor_endpoint" "this" {
 
 # custom domains
 resource "azurerm_cdn_frontdoor_custom_domain" "this" {
-  for_each = {
-    for item in flatten([
-      for ep_key, ep in coalesce(var.profile.endpoints, {}) : [
-        for app_key, app in coalesce(ep.applications, {}) : [
-          for og_key, og in coalesce(app.origin_groups, {}) : [
-            for route_key, route in coalesce(og.routes, {}) : [
-              for cd_key, cd in coalesce(route.custom_domains, {}) : {
-                key           = "${ep_key}-${app_key}-${og_key}-${route_key}-${cd_key}"
-                endpoint      = ep_key
-                app           = app_key
-                og            = og_key
-                route         = route_key
-                custom_domain = cd
-                cd_key        = cd_key
-              }
-            ]
-          ]
+  for_each = merge(flatten([
+    for ep_key, ep in var.profile.endpoints : [
+      for app_key, app in ep.applications : [
+        for og_key, og in app.origin_groups : [
+          for route_key, route in og.routes : {
+            for cd_key, cd in route.custom_domains : "${ep_key}-${app_key}-${og_key}-${route_key}-${cd_key}" => {
+              cd_key        = cd_key
+              custom_domain = cd
+            }
+          }
         ]
       ]
-    ]) : item.key => item
-  }
+    ]
+  ])...)
 
   name = coalesce(
-    each.value.custom_domain.name, join("-", [var.naming.cdn_frontdoor_custom_domain, each.value.cd_key])
+    each.value.custom_domain.name, each.value.cd_key
   )
 
   cdn_frontdoor_profile_id = var.profile.existing != null ? data.azurerm_cdn_frontdoor_profile.this["this"].id : azurerm_cdn_frontdoor_profile.this["this"].id
@@ -89,8 +89,8 @@ resource "azurerm_cdn_frontdoor_custom_domain" "this" {
     for_each = each.value.custom_domain.tls != null ? { "this" = each.value.custom_domain.tls } : {}
 
     content {
-      certificate_type        = coalesce(tls.value.certificate_type, "ManagedCertificate")
-      minimum_version         = coalesce(tls.value.minimum_version, "TLS12")
+      certificate_type        = tls.value.certificate_type
+      minimum_version         = tls.value.minimum_version
       cdn_frontdoor_secret_id = tls.value.cdn_frontdoor_secret_id
 
       dynamic "cipher_suite" {
@@ -115,24 +115,19 @@ resource "azurerm_cdn_frontdoor_custom_domain" "this" {
 
 # origin groups
 resource "azurerm_cdn_frontdoor_origin_group" "this" {
-  for_each = {
-    for item in flatten([
-      for ep_key, ep in coalesce(var.profile.endpoints, {}) : [
-        for app_key, app in coalesce(ep.applications, {}) : [
-          for og_key, og in coalesce(app.origin_groups, {}) : {
-            key      = "${ep_key}-${app_key}-${og_key}"
-            endpoint = ep_key
-            app      = app_key
-            og       = og
-            og_key   = og_key
-          }
-        ]
-      ]
-    ]) : item.key => item
-  }
+  for_each = merge(flatten([
+    for ep_key, ep in var.profile.endpoints : [
+      for app_key, app in ep.applications : {
+        for og_key, og in app.origin_groups : "${ep_key}-${app_key}-${og_key}" => {
+          og_key = og_key
+          og     = og
+        }
+      }
+    ]
+  ])...)
 
   name = coalesce(
-    each.value.og.name, join("-", [var.naming.cdn_frontdoor_origin_group, each.value.og_key])
+    each.value.og.name, each.value.og_key
   )
 
   cdn_frontdoor_profile_id                                  = var.profile.existing != null ? data.azurerm_cdn_frontdoor_profile.this["this"].id : azurerm_cdn_frontdoor_profile.this["this"].id
@@ -151,40 +146,35 @@ resource "azurerm_cdn_frontdoor_origin_group" "this" {
   }
 
   load_balancing {
-    additional_latency_in_milliseconds = try(each.value.og.load_balancing.additional_latency_in_milliseconds, null)
-    sample_size                        = try(each.value.og.load_balancing.sample_size, null)
-    successful_samples_required        = try(each.value.og.load_balancing.successful_samples_required, null)
+    additional_latency_in_milliseconds = each.value.og.load_balancing.additional_latency_in_milliseconds
+    sample_size                        = each.value.og.load_balancing.sample_size
+    successful_samples_required        = each.value.og.load_balancing.successful_samples_required
   }
 }
 
 # origins
 resource "azurerm_cdn_frontdoor_origin" "this" {
-  for_each = {
-    for item in flatten([
-      for ep_key, ep in coalesce(var.profile.endpoints, {}) : [
-        for app_key, app in coalesce(ep.applications, {}) : [
-          for og_key, og in coalesce(app.origin_groups, {}) : [
-            for origin_key, origin in coalesce(og.origins, {}) : {
-              key        = "${ep_key}-${app_key}-${og_key}-${origin_key}"
-              endpoint   = ep_key
-              app        = app_key
-              og         = og_key
-              origin     = origin
-              origin_key = origin_key
-            }
-          ]
-        ]
+  for_each = merge(flatten([
+    for ep_key, ep in var.profile.endpoints : [
+      for app_key, app in ep.applications : [
+        for og_key, og in app.origin_groups : {
+          for origin_key, origin in og.origins : "${ep_key}-${app_key}-${og_key}-${origin_key}" => {
+            og_key     = "${ep_key}-${app_key}-${og_key}"
+            origin_key = origin_key
+            origin     = origin
+          }
+        }
       ]
-    ]) : item.key => item
-  }
+    ]
+  ])...)
 
   name = coalesce(
-    each.value.origin.name, join("-", [var.naming.cdn_frontdoor_origin, each.value.origin_key])
+    each.value.origin.name, each.value.origin_key
   )
 
-  cdn_frontdoor_origin_group_id  = azurerm_cdn_frontdoor_origin_group.this["${each.value.endpoint}-${each.value.app}-${each.value.og}"].id
-  enabled                        = each.value.origin.enabled != null ? each.value.origin.enabled : true
-  certificate_name_check_enabled = each.value.origin.certificate_name_check_enabled != null ? each.value.origin.certificate_name_check_enabled : true
+  cdn_frontdoor_origin_group_id  = azurerm_cdn_frontdoor_origin_group.this[each.value.og_key].id
+  enabled                        = each.value.origin.enabled
+  certificate_name_check_enabled = each.value.origin.certificate_name_check_enabled
   host_name                      = each.value.origin.host_name
   http_port                      = each.value.origin.http_port
   https_port                     = each.value.origin.https_port
@@ -206,51 +196,49 @@ resource "azurerm_cdn_frontdoor_origin" "this" {
 
 # routes
 resource "azurerm_cdn_frontdoor_route" "this" {
-  for_each = {
-    for item in flatten([
-      for ep_key, ep in coalesce(var.profile.endpoints, {}) : [
-        for app_key, app in coalesce(ep.applications, {}) : [
-          for og_key, og in coalesce(app.origin_groups, {}) : [
-            for route_key, route in coalesce(og.routes, {}) : {
-              key       = "${ep_key}-${app_key}-${og_key}-${route_key}"
-              endpoint  = ep_key
-              app       = app_key
-              og        = og_key
-              route     = route
-              route_key = route_key
-            }
-          ]
-        ]
+  for_each = merge(flatten([
+    for ep_key, ep in var.profile.endpoints : [
+      for app_key, app in ep.applications : [
+        for og_key, og in app.origin_groups : {
+          for route_key, route in og.routes : "${ep_key}-${app_key}-${og_key}-${route_key}" => {
+            endpoint           = ep_key
+            og_key             = "${ep_key}-${app_key}-${og_key}"
+            origin_keys        = [for k in keys(og.origins) : "${ep_key}-${app_key}-${og_key}-${k}"]
+            custom_domain_keys = [for k in keys(route.custom_domains) : "${ep_key}-${app_key}-${og_key}-${route_key}-${k}"]
+            rule_set_keys      = [for k in keys(route.rule_sets) : "${ep_key}-${app_key}-${og_key}-${route_key}-${k}"]
+            route_key          = route_key
+            route              = route
+          }
+        }
       ]
-    ]) : item.key => item
-  }
+    ]
+  ])...)
 
   name = coalesce(
-    each.value.route.name, join(
-      "-", [var.naming.cdn_frontdoor_route, each.value.route_key]
-    )
+    each.value.route.name, each.value.route_key
   )
 
   cdn_frontdoor_endpoint_id     = azurerm_cdn_frontdoor_endpoint.this[each.value.endpoint].id
-  cdn_frontdoor_origin_group_id = azurerm_cdn_frontdoor_origin_group.this["${each.value.endpoint}-${each.value.app}-${each.value.og}"].id
+  cdn_frontdoor_origin_group_id = azurerm_cdn_frontdoor_origin_group.this[each.value.og_key].id
+  enabled                       = each.value.route.enabled
+  forwarding_protocol           = each.value.route.forwarding_protocol
+  https_redirect_enabled        = each.value.route.https_redirect_enabled
+  patterns_to_match             = each.value.route.patterns_to_match
+  supported_protocols           = each.value.route.supported_protocols
+  link_to_default_domain        = each.value.route.link_to_default_domain
+  cdn_frontdoor_origin_path     = each.value.route.cdn_frontdoor_origin_path
 
-  enabled                   = each.value.route.enabled
-  forwarding_protocol       = coalesce(each.value.route.forwarding_protocol, "HttpsOnly")
-  https_redirect_enabled    = each.value.route.https_redirect_enabled != null ? each.value.route.https_redirect_enabled : true
-  patterns_to_match         = each.value.route.patterns_to_match
-  supported_protocols       = coalesce(each.value.route.supported_protocols, ["Http", "Https"])
-  link_to_default_domain    = each.value.route.link_to_default_domain
-  cdn_frontdoor_origin_path = each.value.route.cdn_frontdoor_origin_path
+  cdn_frontdoor_origin_ids = [
+    for k in each.value.origin_keys : azurerm_cdn_frontdoor_origin.this[k].id
+  ]
 
-  cdn_frontdoor_origin_ids = [for origin_key in keys(coalesce(
-    var.profile.endpoints[each.value.endpoint].applications[each.value.app].origin_groups[each.value.og].origins, {}
-  )) : azurerm_cdn_frontdoor_origin.this["${each.value.endpoint}-${each.value.app}-${each.value.og}-${origin_key}"].id]
+  cdn_frontdoor_custom_domain_ids = [
+    for k in each.value.custom_domain_keys : azurerm_cdn_frontdoor_custom_domain.this[k].id
+  ]
 
-  cdn_frontdoor_custom_domain_ids = [for cd_key in keys(coalesce(
-    each.value.route.custom_domains, {}
-  )) : azurerm_cdn_frontdoor_custom_domain.this["${each.value.endpoint}-${each.value.app}-${each.value.og}-${each.value.route_key}-${cd_key}"].id]
-
-  cdn_frontdoor_rule_set_ids = [for rs_key in keys(coalesce(each.value.route.rule_sets, {})) : azurerm_cdn_frontdoor_rule_set.this["${each.value.endpoint}-${each.value.app}-${each.value.og}-${each.value.route_key}-${rs_key}"].id]
+  cdn_frontdoor_rule_set_ids = [
+    for k in each.value.rule_set_keys : azurerm_cdn_frontdoor_rule_set.this[k].id
+  ]
 
   dynamic "cache" {
     for_each = each.value.route.cache != null ? { "this" = each.value.route.cache } : {}
@@ -262,36 +250,27 @@ resource "azurerm_cdn_frontdoor_route" "this" {
       content_types_to_compress     = cache.value.content_types_to_compress
     }
   }
-
-
 }
 
 # rule sets
 resource "azurerm_cdn_frontdoor_rule_set" "this" {
-  for_each = {
-    for item in flatten([
-      for ep_key, ep in coalesce(var.profile.endpoints, {}) : [
-        for app_key, app in coalesce(ep.applications, {}) : [
-          for og_key, og in coalesce(app.origin_groups, {}) : [
-            for route_key, route in coalesce(og.routes, {}) : [
-              for rs_key, rs in coalesce(route.rule_sets, {}) : {
-                key      = "${ep_key}-${app_key}-${og_key}-${route_key}-${rs_key}"
-                endpoint = ep_key
-                app      = app_key
-                og       = og_key
-                route    = route_key
-                rs       = rs
-                rs_key   = rs_key
-              }
-            ]
-          ]
+  for_each = merge(flatten([
+    for ep_key, ep in var.profile.endpoints : [
+      for app_key, app in ep.applications : [
+        for og_key, og in app.origin_groups : [
+          for route_key, route in og.routes : {
+            for rs_key, rs in route.rule_sets : "${ep_key}-${app_key}-${og_key}-${route_key}-${rs_key}" => {
+              rs_key = rs_key
+              rs     = rs
+            }
+          }
         ]
       ]
-    ]) : item.key => item
-  }
+    ]
+  ])...)
 
   name = coalesce(
-    each.value.rs.name, join("", [var.naming.cdn_frontdoor_rule_set, each.value.rs_key])
+    each.value.rs.name, each.value.rs_key
   )
 
   cdn_frontdoor_profile_id = var.profile.existing != null ? data.azurerm_cdn_frontdoor_profile.this["this"].id : azurerm_cdn_frontdoor_profile.this["this"].id
@@ -299,303 +278,295 @@ resource "azurerm_cdn_frontdoor_rule_set" "this" {
 
 # rules
 resource "azurerm_cdn_frontdoor_rule" "this" {
-  for_each = {
-    for item in flatten([
-      for ep_key, ep in coalesce(var.profile.endpoints, {}) : [
-        for app_key, app in coalesce(ep.applications, {}) : [
-          for og_key, og in coalesce(app.origin_groups, {}) : [
-            for route_key, route in coalesce(og.routes, {}) : [
-              for rs_key, rs in coalesce(route.rule_sets, {}) : [
-                for rule_key, rule in coalesce(rs.rules, {}) : {
-                  key      = "${ep_key}-${app_key}-${og_key}-${route_key}-${rs_key}-${rule_key}"
-                  endpoint = ep_key
-                  app      = app_key
-                  og       = og_key
-                  route    = route_key
-                  rs       = rs_key
-                  rule     = rule
-                  rule_name = coalesce(
-                    rule.name, join("", [var.naming.cdn_frontdoor_rule, rule_key])
-                  )
-                }
-              ]
-            ]
+  for_each = merge(flatten([
+    for ep_key, ep in var.profile.endpoints : [
+      for app_key, app in ep.applications : [
+        for og_key, og in app.origin_groups : [
+          for route_key, route in og.routes : [
+            for rs_key, rs in route.rule_sets : {
+              for rule_key, rule in rs.rules : "${ep_key}-${app_key}-${og_key}-${route_key}-${rs_key}-${rule_key}" => {
+                rs_key   = "${ep_key}-${app_key}-${og_key}-${route_key}-${rs_key}"
+                rule_key = rule_key
+                rule     = rule
+              }
+            }
           ]
         ]
       ]
-    ]) : item.key => item
-  }
+    ]
+  ])...)
 
-  name                      = each.value.rule_name
-  cdn_frontdoor_rule_set_id = azurerm_cdn_frontdoor_rule_set.this["${each.value.endpoint}-${each.value.app}-${each.value.og}-${each.value.route}-${each.value.rs}"].id
+  name = coalesce(
+    each.value.rule.name, each.value.rule_key
+  )
+
+  cdn_frontdoor_rule_set_id = azurerm_cdn_frontdoor_rule_set.this[each.value.rs_key].id
   order                     = each.value.rule.order
-  behavior_on_match         = each.value.rule.behavior_on_match
+  behaviour_on_match        = each.value.rule.behaviour_on_match
 
   depends_on = [
     azurerm_cdn_frontdoor_origin.this,
     azurerm_cdn_frontdoor_origin_group.this,
   ]
 
-  actions {
-    dynamic "url_redirect_action" {
-      for_each = each.value.rule.actions[0].url_redirect_action != null ? { "this" = each.value.rule.actions[0].url_redirect_action } : {}
+  dynamic "actions" {
+    for_each = each.value.rule.actions
 
-      content {
-        redirect_type        = url_redirect_action.value.redirect_type
-        destination_hostname = url_redirect_action.value.destination_hostname
-        destination_path     = url_redirect_action.value.destination_path
-        query_string         = url_redirect_action.value.query_string
-        destination_fragment = url_redirect_action.value.destination_fragment
-        redirect_protocol    = url_redirect_action.value.redirect_protocol
+    content {
+      dynamic "url_redirect" {
+        for_each = actions.value.url_redirect != null ? { "this" = actions.value.url_redirect } : {}
+
+        content {
+          redirect_type         = url_redirect.value.redirect_type
+          destination_host_name = url_redirect.value.destination_host_name
+          destination_path      = url_redirect.value.destination_path
+          query_string          = url_redirect.value.query_string
+          destination_fragment  = url_redirect.value.destination_fragment
+          redirect_protocol     = url_redirect.value.redirect_protocol
+        }
       }
-    }
 
-    dynamic "url_rewrite_action" {
-      for_each = each.value.rule.actions[0].url_rewrite_action != null ? { "this" = each.value.rule.actions[0].url_rewrite_action } : {}
+      dynamic "url_rewrite" {
+        for_each = actions.value.url_rewrite != null ? { "this" = actions.value.url_rewrite } : {}
 
-      content {
-        source_pattern          = url_rewrite_action.value.source_pattern
-        destination             = url_rewrite_action.value.destination
-        preserve_unmatched_path = url_rewrite_action.value.preserve_unmatched_path
+        content {
+          source_pattern                  = url_rewrite.value.source_pattern
+          destination_path                = url_rewrite.value.destination_path
+          preserve_unmatched_path_enabled = url_rewrite.value.preserve_unmatched_path_enabled
+        }
       }
-    }
 
-    dynamic "route_configuration_override_action" {
-      for_each = each.value.rule.actions[0].route_configuration_override_action != null ? { "this" = each.value.rule.actions[0].route_configuration_override_action } : {}
+      dynamic "route_configuration_override" {
+        for_each = actions.value.route_configuration_override != null ? { "this" = actions.value.route_configuration_override } : {}
 
-      content {
-        forwarding_protocol           = route_configuration_override_action.value.forwarding_protocol
-        cache_duration                = route_configuration_override_action.value.cache_duration
-        cache_behavior                = route_configuration_override_action.value.cache_behavior
-        query_string_caching_behavior = route_configuration_override_action.value.query_string_caching_behavior
-        compression_enabled           = route_configuration_override_action.value.compression_enabled
-        query_string_parameters       = route_configuration_override_action.value.query_string_parameters
-        cdn_frontdoor_origin_group_id = route_configuration_override_action.value.cdn_frontdoor_origin_group_id
+        content {
+          caching {
+            behaviour               = route_configuration_override.value.caching.behaviour
+            compression_enabled     = route_configuration_override.value.caching.compression_enabled
+            duration                = route_configuration_override.value.caching.duration
+            query_string_behaviour  = route_configuration_override.value.caching.query_string_behaviour
+            query_string_parameters = route_configuration_override.value.caching.query_string_parameters
+          }
+
+          dynamic "origin_group" {
+            for_each = route_configuration_override.value.origin_group != null ? { "this" = route_configuration_override.value.origin_group } : {}
+
+            content {
+              forwarding_protocol           = origin_group.value.forwarding_protocol
+              cdn_frontdoor_origin_group_id = origin_group.value.cdn_frontdoor_origin_group_id
+            }
+          }
+        }
       }
-    }
 
-    dynamic "response_header_action" {
-      for_each = each.value.rule.actions[0].response_header_action != null ? { "this" = each.value.rule.actions[0].response_header_action } : {}
+      dynamic "modify_response_header" {
+        for_each = actions.value.modify_response_header != null ? { "this" = actions.value.modify_response_header } : {}
 
-      content {
-        header_action = response_header_action.value.header_action
-        header_name   = response_header_action.value.header_name
-        value         = response_header_action.value.value
+        content {
+          operator     = modify_response_header.value.operator
+          header_name  = modify_response_header.value.header_name
+          header_value = modify_response_header.value.header_value
+        }
       }
-    }
 
-    dynamic "request_header_action" {
-      for_each = each.value.rule.actions[0].request_header_action != null ? { "this" = each.value.rule.actions[0].request_header_action } : {}
+      dynamic "modify_request_header" {
+        for_each = actions.value.modify_request_header != null ? { "this" = actions.value.modify_request_header } : {}
 
-      content {
-        header_action = request_header_action.value.header_action
-        header_name   = request_header_action.value.header_name
-        value         = request_header_action.value.value
+        content {
+          operator     = modify_request_header.value.operator
+          header_name  = modify_request_header.value.header_name
+          header_value = modify_request_header.value.header_value
+        }
       }
     }
   }
 
-  conditions {
-    dynamic "remote_address_condition" {
-      for_each = each.value.rule.conditions.remote_address_condition != null ? { "this" = each.value.rule.conditions.remote_address_condition } : {}
+  dynamic "conditions" {
+    for_each = each.value.rule.conditions
 
-      content {
-        operator         = remote_address_condition.value.operator
-        negate_condition = remote_address_condition.value.negate_condition
-        match_values     = remote_address_condition.value.match_values
+    content {
+      dynamic "remote_address" {
+        for_each = conditions.value.remote_address != null ? { "this" = conditions.value.remote_address } : {}
+
+        content {
+          operator = remote_address.value.operator
+          values   = remote_address.value.values
+        }
       }
-    }
 
-    dynamic "client_port_condition" {
-      for_each = each.value.rule.conditions.client_port_condition != null ? { "this" = each.value.rule.conditions.client_port_condition } : {}
+      dynamic "client_port" {
+        for_each = conditions.value.client_port != null ? { "this" = conditions.value.client_port } : {}
 
-      content {
-        operator         = client_port_condition.value.operator
-        match_values     = client_port_condition.value.match_values
-        negate_condition = client_port_condition.value.negate_condition
+        content {
+          operator = client_port.value.operator
+          values   = client_port.value.values
+        }
       }
-    }
 
-    dynamic "ssl_protocol_condition" {
-      for_each = each.value.rule.conditions.ssl_protocol_condition != null ? { "this" = each.value.rule.conditions.ssl_protocol_condition } : {}
+      dynamic "ssl_protocol" {
+        for_each = conditions.value.ssl_protocol != null ? { "this" = conditions.value.ssl_protocol } : {}
 
-      content {
-        negate_condition = ssl_protocol_condition.value.negate_condition
-        match_values     = ssl_protocol_condition.value.match_values
-        operator         = ssl_protocol_condition.value.operator
+        content {
+          values   = ssl_protocol.value.values
+          operator = ssl_protocol.value.operator
+        }
       }
-    }
 
-    dynamic "socket_address_condition" {
-      for_each = each.value.rule.conditions.socket_address_condition != null ? { "this" = each.value.rule.conditions.socket_address_condition } : {}
+      dynamic "socket_address" {
+        for_each = conditions.value.socket_address != null ? { "this" = conditions.value.socket_address } : {}
 
-      content {
-        match_values     = socket_address_condition.value.match_values
-        operator         = socket_address_condition.value.operator
-        negate_condition = socket_address_condition.value.negate_condition
+        content {
+          values   = socket_address.value.values
+          operator = socket_address.value.operator
+        }
       }
-    }
 
-    dynamic "server_port_condition" {
-      for_each = each.value.rule.conditions.server_port_condition != null ? { "this" = each.value.rule.conditions.server_port_condition } : {}
+      dynamic "server_port" {
+        for_each = conditions.value.server_port != null ? { "this" = conditions.value.server_port } : {}
 
-      content {
-        negate_condition = server_port_condition.value.negate_condition
-        operator         = server_port_condition.value.operator
-        match_values     = server_port_condition.value.match_values
+        content {
+          operator = server_port.value.operator
+          values   = server_port.value.values
+        }
       }
-    }
 
-    dynamic "host_name_condition" {
-      for_each = each.value.rule.conditions.host_name_condition != null ? { "this" = each.value.rule.conditions.host_name_condition } : {}
+      dynamic "host_name" {
+        for_each = conditions.value.host_name != null ? { "this" = conditions.value.host_name } : {}
 
-      content {
-        match_values     = host_name_condition.value.match_values
-        operator         = host_name_condition.value.operator
-        transforms       = host_name_condition.value.transforms
-        negate_condition = host_name_condition.value.negate_condition
+        content {
+          values     = host_name.value.values
+          operator   = host_name.value.operator
+          transforms = host_name.value.transforms
+        }
       }
-    }
 
-    dynamic "request_method_condition" {
-      for_each = each.value.rule.conditions.request_method_condition != null ? { "this" = each.value.rule.conditions.request_method_condition } : {}
+      dynamic "request_method" {
+        for_each = conditions.value.request_method != null ? { "this" = conditions.value.request_method } : {}
 
-      content {
-        match_values     = request_method_condition.value.match_values
-        operator         = request_method_condition.value.operator
-        negate_condition = request_method_condition.value.negate_condition
+        content {
+          values   = request_method.value.values
+          operator = request_method.value.operator
+        }
       }
-    }
 
-    dynamic "query_string_condition" {
-      for_each = each.value.rule.conditions.query_string_condition != null ? { "this" = each.value.rule.conditions.query_string_condition } : {}
+      dynamic "query_string" {
+        for_each = conditions.value.query_string != null ? { "this" = conditions.value.query_string } : {}
 
-      content {
-        operator         = query_string_condition.value.operator
-        negate_condition = query_string_condition.value.negate_condition
-        match_values     = query_string_condition.value.match_values
-        transforms       = query_string_condition.value.transforms
+        content {
+          operator   = query_string.value.operator
+          values     = query_string.value.values
+          transforms = query_string.value.transforms
+        }
       }
-    }
 
-    dynamic "post_args_condition" {
-      for_each = each.value.rule.conditions.post_args_condition != null ? { "this" = each.value.rule.conditions.post_args_condition } : {}
+      dynamic "post_argument" {
+        for_each = conditions.value.post_argument != null ? { "this" = conditions.value.post_argument } : {}
 
-      content {
-        operator         = post_args_condition.value.operator
-        post_args_name   = post_args_condition.value.post_args_name
-        transforms       = post_args_condition.value.transforms
-        match_values     = post_args_condition.value.match_values
-        negate_condition = post_args_condition.value.negate_condition
+        content {
+          operator   = post_argument.value.operator
+          name       = post_argument.value.name
+          transforms = post_argument.value.transforms
+          values     = post_argument.value.values
+        }
       }
-    }
 
-    dynamic "request_uri_condition" {
-      for_each = each.value.rule.conditions.request_uri_condition != null ? { "this" = each.value.rule.conditions.request_uri_condition } : {}
+      dynamic "request_url" {
+        for_each = conditions.value.request_url != null ? { "this" = conditions.value.request_url } : {}
 
-      content {
-        operator         = request_uri_condition.value.operator
-        negate_condition = request_uri_condition.value.negate_condition
-        match_values     = request_uri_condition.value.match_values
-        transforms       = request_uri_condition.value.transforms
+        content {
+          operator   = request_url.value.operator
+          values     = request_url.value.values
+          transforms = request_url.value.transforms
+        }
       }
-    }
 
-    dynamic "request_header_condition" {
-      for_each = each.value.rule.conditions.request_header_condition != null ? { "this" = each.value.rule.conditions.request_header_condition } : {}
+      dynamic "request_header" {
+        for_each = conditions.value.request_header != null ? { "this" = conditions.value.request_header } : {}
 
-      content {
-        header_name      = request_header_condition.value.header_name
-        operator         = request_header_condition.value.operator
-        negate_condition = request_header_condition.value.negate_condition
-        match_values     = request_header_condition.value.match_values
-        transforms       = request_header_condition.value.transforms
+        content {
+          name       = request_header.value.name
+          operator   = request_header.value.operator
+          values     = request_header.value.values
+          transforms = request_header.value.transforms
+        }
       }
-    }
 
-    dynamic "request_body_condition" {
-      for_each = each.value.rule.conditions.request_body_condition != null ? { "this" = each.value.rule.conditions.request_body_condition } : {}
+      dynamic "request_body" {
+        for_each = conditions.value.request_body != null ? { "this" = conditions.value.request_body } : {}
 
-      content {
-        operator         = request_body_condition.value.operator
-        match_values     = request_body_condition.value.match_values
-        negate_condition = request_body_condition.value.negate_condition
-        transforms       = request_body_condition.value.transforms
+        content {
+          operator   = request_body.value.operator
+          values     = request_body.value.values
+          transforms = request_body.value.transforms
+        }
       }
-    }
 
-    dynamic "request_scheme_condition" {
-      for_each = each.value.rule.conditions.request_scheme_condition != null ? { "this" = each.value.rule.conditions.request_scheme_condition } : {}
+      dynamic "request_scheme" {
+        for_each = conditions.value.request_scheme != null ? { "this" = conditions.value.request_scheme } : {}
 
-      content {
-        operator         = request_scheme_condition.value.operator
-        negate_condition = request_scheme_condition.value.negate_condition
-        match_values     = request_scheme_condition.value.match_values
+        content {
+          operator = request_scheme.value.operator
+          values   = request_scheme.value.values
+        }
       }
-    }
 
-    dynamic "url_path_condition" {
-      for_each = each.value.rule.conditions.url_path_condition != null ? { "this" = each.value.rule.conditions.url_path_condition } : {}
+      dynamic "request_path" {
+        for_each = conditions.value.request_path != null ? { "this" = conditions.value.request_path } : {}
 
-      content {
-        operator         = url_path_condition.value.operator
-        negate_condition = url_path_condition.value.negate_condition
-        match_values     = url_path_condition.value.match_values
-        transforms       = url_path_condition.value.transforms
+        content {
+          operator   = request_path.value.operator
+          values     = request_path.value.values
+          transforms = request_path.value.transforms
+        }
       }
-    }
 
-    dynamic "url_file_extension_condition" {
-      for_each = each.value.rule.conditions.url_file_extension_condition != null ? { "this" = each.value.rule.conditions.url_file_extension_condition } : {}
+      dynamic "request_file_extension" {
+        for_each = conditions.value.request_file_extension != null ? { "this" = conditions.value.request_file_extension } : {}
 
-      content {
-        operator         = url_file_extension_condition.value.operator
-        negate_condition = url_file_extension_condition.value.negate_condition
-        match_values     = url_file_extension_condition.value.match_values
-        transforms       = url_file_extension_condition.value.transforms
+        content {
+          operator   = request_file_extension.value.operator
+          values     = request_file_extension.value.values
+          transforms = request_file_extension.value.transforms
+        }
       }
-    }
 
-    dynamic "url_filename_condition" {
-      for_each = each.value.rule.conditions.url_filename_condition != null ? { "this" = each.value.rule.conditions.url_filename_condition } : {}
+      dynamic "request_filename" {
+        for_each = conditions.value.request_filename != null ? { "this" = conditions.value.request_filename } : {}
 
-      content {
-        operator         = url_filename_condition.value.operator
-        negate_condition = url_filename_condition.value.negate_condition
-        match_values     = url_filename_condition.value.match_values
-        transforms       = url_filename_condition.value.transforms
+        content {
+          operator   = request_filename.value.operator
+          values     = request_filename.value.values
+          transforms = request_filename.value.transforms
+        }
       }
-    }
 
-    dynamic "http_version_condition" {
-      for_each = each.value.rule.conditions.http_version_condition != null ? { "this" = each.value.rule.conditions.http_version_condition } : {}
+      dynamic "request_cookies" {
+        for_each = conditions.value.request_cookies != null ? { "this" = conditions.value.request_cookies } : {}
 
-      content {
-        negate_condition = http_version_condition.value.negate_condition
-        operator         = http_version_condition.value.operator
-        match_values     = http_version_condition.value.match_values
+        content {
+          name       = request_cookies.value.name
+          operator   = request_cookies.value.operator
+          values     = request_cookies.value.values
+          transforms = request_cookies.value.transforms
+        }
       }
-    }
 
-    dynamic "cookies_condition" {
-      for_each = each.value.rule.conditions.cookies_condition != null ? { "this" = each.value.rule.conditions.cookies_condition } : {}
+      dynamic "device_type" {
+        for_each = conditions.value.device_type != null ? { "this" = conditions.value.device_type } : {}
 
-      content {
-        cookie_name      = cookies_condition.value.cookie_name
-        operator         = cookies_condition.value.operator
-        negate_condition = cookies_condition.value.negate_condition
-        match_values     = cookies_condition.value.match_values
-        transforms       = cookies_condition.value.transforms
+        content {
+          operator = device_type.value.operator
+          values   = device_type.value.values
+        }
       }
-    }
 
-    dynamic "is_device_condition" {
-      for_each = each.value.rule.conditions.is_device_condition != null ? { "this" = each.value.rule.conditions.is_device_condition } : {}
+      dynamic "http_version" {
+        for_each = conditions.value.http_version != null ? { "this" = conditions.value.http_version } : {}
 
-      content {
-        operator         = is_device_condition.value.operator
-        negate_condition = is_device_condition.value.negate_condition
-        match_values     = is_device_condition.value.match_values
+        content {
+          operator = http_version.value.operator
+          values   = http_version.value.values
+        }
       }
     }
   }

@@ -48,20 +48,20 @@ locals {
               security = {
                 rules = {
                   hsts = {
-                    order             = 1
-                    behavior_on_match = "Continue"
+                    order              = 1
+                    behaviour_on_match = "Continue"
                     actions = [{
-                      response_header_action = {
-                        header_action = "Append"
-                        header_name   = "Strict-Transport-Security"
-                        value         = "max-age=31536000; includeSubDomains"
+                      modify_response_header = {
+                        operator     = "Append"
+                        header_name  = "Strict-Transport-Security"
+                        header_value = "max-age=31536000; includeSubDomains"
                       }
                     }]
-                    conditions = {
-                      request_uri_condition = {
+                    conditions = [{
+                      request_url = {
                         operator = "Any"
                       }
-                    }
+                    }]
                   }
                 }
               }
@@ -96,20 +96,20 @@ locals {
               redirect = {
                 rules = {
                   forward = {
-                    order             = 1
-                    behavior_on_match = "Continue"
+                    order              = 1
+                    behaviour_on_match = "Continue"
                     actions = [{
-                      url_redirect_action = {
-                        redirect_type        = "Found"
-                        destination_hostname = "www.example.com"
-                        destination_path     = "/secunda/new/"
+                      url_redirect = {
+                        redirect_type         = "Found"
+                        destination_host_name = "www.example.com"
+                        destination_path      = "/secunda/new/"
                       }
                     }]
-                    conditions = {
-                      request_uri_condition = {
+                    conditions = [{
+                      request_url = {
                         operator = "Any"
                       }
-                    }
+                    }]
                   }
                 }
               }

@@ -1,5 +1,4 @@
 module "naming" {
-
   source  = "cloudnationhq/naming/azure"
   version = "~> 0.32"
 
@@ -23,9 +22,23 @@ module "frontdoor" {
   version = "~> 4.0"
 
   profile = {
-    name                = module.naming.cdn_frontdoor_profile.name
-    resource_group_name = module.rg.groups.demo.name
-    location            = module.rg.groups.demo.location
+    name                     = module.naming.cdn_frontdoor_profile.name_unique
+    resource_group_name      = module.rg.groups.demo.name
+    location                 = module.rg.groups.demo.location
+    sku_name                 = "Premium_AzureFrontDoor"
+    response_timeout_seconds = 120
+
+    log_scrubbing_rules = {
+      ip = {
+        match_variable = "RequestIPAddress"
+      }
+      uri = {
+        match_variable = "RequestUri"
+      }
+      query = {
+        match_variable = "QueryStringArgNames"
+      }
+    }
 
     endpoints = {
       demo = {
